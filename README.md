@@ -125,6 +125,38 @@ Chemins des backends surchargeables : `PROMOTE_DIR=… DIASPORA_DIR=… bash dep
 > cycles différents, et sont intégrés par **contrat HTTP** stable. On garde donc les dépôts
 > séparés + cette fine couche d'orchestration.
 
+## Déploiement sur serveur Ubuntu (depuis GitHub, ports 6000-7000)
+
+Un script récupère les **3 dépôts** GitHub et déploie tout le système en conteneurs,
+avec des ports hôte dans la plage **6000-7000** :
+
+```bash
+# sur le serveur (prérequis : docker, docker compose, git) :
+git clone https://github.com/Efraim0601/union-portal.git
+cd union-portal
+cp deploy/server/.env.example deploy/server/.env   # (optionnel) ajuster ports / URLs / secrets
+bash deploy/server/deploy.sh                        # clone les 3 repos + build + run
+```
+
+| Service | Port hôte (défaut) | Conteneur |
+|---|---|---|
+| **Portail unifié** (nginx + 3 fronts) | **6080** | `afriland-union` |
+| Backend promote (Spring Boot + Postgres + MinIO) | **6390** | `promoteapp-backend-1` |
+| Backend diaspora (FastAPI) | **6002** | `diaspora-onboarding` |
+
+- **Ports paramétrables** dans `deploy/server/.env` (`UNION_PORT`, `PROMOTE_PORT`, `DIASPORA_PORT`)
+  ainsi que les URLs des dépôts et la branche.
+- Le portail **proxifie** `/promote-api` → promote et `/api` → diaspora (même origine, pas de CORS).
+  Les upstreams nginx sont **substitués au démarrage** (`PROMOTE_UPSTREAM`/`DIASPORA_UPSTREAM`,
+  cf. `deploy/nginx.conf` en template envsubst) → une seule image pour tous les ports.
+- Secrets : au 1ᵉʳ lancement, `promoteApp/.env` et `diaspora-onboarding/.env` sont créés depuis
+  leurs `.env.example` — **éditez-les** (mots de passe, `JWT_SECRET`, `FERNET_KEY`) avant la prod.
+- Arrêt : `bash deploy/server/stop.sh`.
+
+> Le build du front se fait **dans Docker** (multi-stage `Dockerfile`) : le serveur n'a besoin
+> que de Docker (pas de Node). Réseau npm restreint ? Basculez sur le build hôte (`npm run build:all`
+> + `Dockerfile.serve`).
+
 ## Notes / TODO
 
 - **Uniformité promote** : la police est alignée (Barlow) et les neutres sont proches

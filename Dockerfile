@@ -23,8 +23,12 @@ RUN node node_modules/.bin/ng build shell    --base-href / \
 
 # ---------- Stage 2 : nginx ----------
 FROM nginx:1.27-alpine
-# Config gateway
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+# Config gateway en TEMPLATE : les upstreams backend sont substitués au démarrage
+# (envsubst de l'image nginx) depuis PROMOTE_UPSTREAM / DIASPORA_UPSTREAM.
+# Défauts = backends sur l'hôte (host.docker.internal) ; surchargés au `docker run -e`.
+ENV PROMOTE_UPSTREAM=host.docker.internal:8390
+ENV DIASPORA_UPSTREAM=host.docker.internal:10002
+COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
 # Shell (host) à la racine
 COPY --from=build /app/dist/shell/browser/    /usr/share/nginx/html/
 # Remotes sous /remotes/*
