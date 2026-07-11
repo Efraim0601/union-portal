@@ -56,12 +56,21 @@ mkdir -p "$DEPLOY_DIR"
 
 # --- 2. Récupération des 3 dépôts ------------------------------------------
 say "2/6  Récupération des dépôts GitHub dans $DEPLOY_DIR"
-clone_or_pull() {  # <url> <dir> <branch>
+# Branche par défaut d'un dépôt distant (ex. master / main)
+remote_default_branch() { git ls-remote --symref "$1" HEAD 2>/dev/null | awk '/^ref:/{sub("refs/heads/","",$2); print $2; exit}'; }
+clone_or_pull() {  # <url> <dir> <branch souhaitée>
   local url="$1" dir="$2" branch="$3"
+  # Si la branche demandée n'existe pas sur le remote, on retombe sur sa branche par défaut
+  # (union-portal & promoteApp = master ; diaspora-onboarding = main).
+  if ! git ls-remote --exit-code --heads "$url" "$branch" >/dev/null 2>&1; then
+    local def; def="$(remote_default_branch "$url")"
+    [ -n "$def" ] && { warn "branche '$branch' absente sur $(basename "$dir") -> utilisation de '$def'"; branch="$def"; }
+  fi
   if [ -d "$dir/.git" ]; then
-    git -C "$dir" fetch --depth 1 origin "$branch" && git -C "$dir" reset --hard "origin/$branch"
+    git -C "$dir" fetch --depth 1 origin "$branch" && git -C "$dir" checkout -q -B "$branch" "origin/$branch"
     ok "maj $(basename "$dir") ($branch)"
   else
+    rm -rf "$dir"
     git clone --depth 1 -b "$branch" "$url" "$dir"
     ok "cloné $(basename "$dir") ($branch)"
   fi
