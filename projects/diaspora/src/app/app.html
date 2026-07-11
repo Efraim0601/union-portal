@@ -1,0 +1,18 @@
+<div class="min-h-screen bg-background text-foreground">
+  <header class="border-b border-border">
+    <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+      <a routerLink="/home" class="flex items-center gap-2 font-semibold tracking-tight">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm">A</span>
+        Afriland — Compte Diaspora
+      </a>
+      <nav class="flex items-center gap-4 text-sm">
+        <a routerLink="/onboarding" class="text-muted-foreground hover:text-foreground">Ouvrir un compte</a>
+        <a routerLink="/status" class="text-muted-foreground hover:text-foreground">Suivre ma demande</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <router-outlet />
+  </main>
+</div>

@@ -1,0 +1,29 @@
+# Dépendances & sorties de build
+/node_modules
+/dist
+/out-tsc
+/.angular
+/tmp
+/bazel-out
+
+# Tests / couverture
+/coverage
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environnement / secrets (ne jamais committer)
+.env
+.env.*
+!.env.example
+
+# Éditeurs / OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp

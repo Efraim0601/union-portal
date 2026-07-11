@@ -1,0 +1,282 @@
+/* ============================================================
+   Afriland Portal — Design system foundation
+   Recréé depuis le composant Claude Design (Afriland Portal.dc.html).
+   Palette: rouge #C8102E, navy #1B1B2F, surface #F7F8FA, Plus Jakarta Sans.
+   ============================================================ */
+
+:root {
+  /* Brand — aligné sur le design-system portal-client-firstpay (digital-onboarding) */
+  --primary: #C8102E;
+  --primary-700: #a80d26;
+  --primary-900: #8f0e15;
+  --navy: #151821;          /* ink du design-system */
+  --text: #151821;
+  --muted: #6B7280;
+  --muted-2: #9CA3AF;
+  --label: #374151;
+  --bg: #FFFAF6;            /* fond papier beige du design-system */
+  --surface: #FFFFFF;
+  --surface-2: #FCFAF7;
+  --surface-3: #F7F2EC;     /* beige clair */
+  --border: rgba(20,20,30,0.12);
+  --border-2: rgba(20,20,30,0.18);
+
+  /* Semantic */
+  --success: #059669;
+  --success-soft: #ECFDF5;
+  --danger: #DC2626;
+  --danger-soft: #FEF2F2;
+  --danger-border: #FECACA;
+  --warning: #D97706;
+  --warning-soft: #FFFBEB;
+  --info: #2563EB;
+  --info-soft: #EFF6FF;
+  --accent: #C8102E;
+  --field-bg: #FAFAFA;
+
+  /* Operators (Mobile Money) */
+  --op-om: #FF7900;
+  --op-mtn: #FFCB05;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .06);
+  --shadow: 0 4px 24px rgba(0, 0, 0, .06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, .12);
+
+  /* Polices du design-system : Inter en corps/UI, Source Serif 4 pour les titres */
+  --font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Source Serif 4', Georgia, serif;
+
+  /* Demo/lang top bar height */
+  --topbar-h: 38px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fond global — beige propre du design-system (dégradé subtil, sans watermark) */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(160deg, #FFFAF6 0%, #FBF6F0 55%, #F7F2EC 100%);
+  pointer-events: none;
+}
+
+input, select, textarea, button { font-family: inherit; }
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  border-color: var(--primary) !important;
+}
+
+::placeholder { color: var(--muted-2); }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+
+a { color: inherit; text-decoration: none; }
+
+/* ---- keyframes (du design) ---- */
+@keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes breathe { 0%, 100% { opacity: .6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.04); } }
+@keyframes spinRing { to { transform: rotate(360deg); } }
+@keyframes drawCheck { to { stroke-dashoffset: 0; } }
+@keyframes shakeX { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+@keyframes countPulse { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+/* ============================================================
+   Layout primitives — cadre mobile (preview 390×844)
+   ============================================================ */
+
+.app-shell {
+  padding-top: var(--topbar-h);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen-pad { padding: 24px 16px; }
+
+.fade-in { animation: fadeIn .4s ease; }
+.slide-up { animation: slideUp .5s ease; }
+
+/* ============================================================
+   Composants de base réutilisables (styles inline du design)
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: inherit;
+}
+.btn:active { transform: scale(.98); }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  padding: 14px;
+  font-size: 15px;
+  width: 100%;
+}
+.btn-primary:hover { background: var(--primary-700); }
+.btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-ghost:hover { color: var(--primary); }
+
+.btn-soft {
+  background: var(--surface-3);
+  color: var(--label);
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+}
+.btn-soft:hover { background: var(--border); }
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.field { margin-bottom: 18px; }
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label);
+  margin-bottom: 6px;
+}
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  background: var(--surface-2);
+  transition: all .2s;
+}
+
+.alert-error {
+  padding: 10px 12px;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+}
+.alert-error.shake { animation: shakeX .4s ease; }
+
+.alert-success {
+  padding: 8px 12px;
+  background: var(--success-soft);
+  border-radius: var(--radius-sm);
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--primary);
+  color: #fff;
+}
+
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ---- form fields (phone-field, field wrapper) ---- */
+@keyframes fieldIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+.field { animation: fieldIn .28s cubic-bezier(.2,.7,.3,1) both; margin-bottom: 18px; }
+.field label { display: block; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; color: var(--text); transition: color .15s ease; }
+.field:focus-within label { color: var(--primary); }
+.field .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+.field .err { font-size: 11.5px; color: var(--accent); margin-top: 6px; font-weight: 600; animation: fieldIn .2s ease both; }
+.field:has(.err) label { color: var(--accent); }
+.field:has(.err) .input-prefix { border-color: var(--accent); }
+.input-prefix {
+  display: flex; align-items: stretch;
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: var(--field-bg);
+}
+.input-prefix:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+.input-prefix .phone-cc {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  border: none; border-right: 1.5px solid var(--border); background: var(--surface-2);
+  color: var(--text); font-weight: 700; font-size: 14px; padding: 0 10px; cursor: pointer; outline: none;
+}
+.cc-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  width: 300px; max-width: 90vw; background: var(--surface);
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); overflow: hidden;
+}
+.cc-search {
+  width: 100%; box-sizing: border-box; border: none; border-bottom: 1.5px solid var(--border);
+  padding: 11px 13px; outline: none; font-family: var(--font); font-size: 14px;
+  background: var(--field-bg); color: var(--text);
+}
+.cc-list { max-height: 264px; overflow-y: auto; }
+.cc-list button {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  border: none; background: transparent; padding: 9px 13px; cursor: pointer;
+  font-size: 13.5px; color: var(--text);
+}
+.cc-list button:hover { background: var(--surface-2); }
+.cc-list button.cc-active { background: color-mix(in srgb, var(--primary) 12%, transparent); font-weight: 700; }
+.cc-list button .cc-dial { margin-left: auto; color: var(--muted); font-weight: 700; flex-shrink: 0; }
+.input-prefix input {
+  flex: 1; min-width: 0; border: none; background: transparent; outline: none;
+  font-family: var(--font); font-size: 15px; padding: 13px 12px; color: var(--text); letter-spacing: .02em;
+}

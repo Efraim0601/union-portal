@@ -1,0 +1,17 @@
+<!-- Top bar (demo/lang) — calé sur le design (#1B1B2F, 38px) -->
+<div class="topbar">
+  <span class="topbar-brand">Afriland First Bank</span>
+  <button class="topbar-lang" (click)="i18n.toggle()" type="button">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10"></circle>
+      <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"></path>
+    </svg>
+    {{ i18n.label() }}
+  </button>
+</div>
+
+<app-notif-bell />
+
+<div class="app-shell">
+  <router-outlet />
+</div>

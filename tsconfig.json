@@ -1,0 +1,40 @@
+/* Base TS du monorepo Angular CLI — Afriland Union.
+   Les chemins @union/* pointent vers les libs partagées (design-system, auth). */
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@union/design-system": ["projects/design-system/src/public-api.ts"],
+      "@union/auth": ["projects/auth/src/public-api.ts"]
+    }
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  },
+  "references": [
+    {
+      "path": "./projects/shell/tsconfig.app.json"
+    },
+    {
+      "path": "./projects/promote/tsconfig.app.json"
+    },
+    {
+      "path": "./projects/diaspora/tsconfig.app.json"
+    }
+  ]
+}

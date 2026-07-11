@@ -1,0 +1,8 @@
+{
+  "/promote-api": {
+    "target": "http://localhost:8390",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/promote-api": "/api" }
+  }
+}

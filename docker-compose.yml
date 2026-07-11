@@ -1,0 +1,25 @@
+# Déploiement simple : docker compose up --build  ->  http://localhost:8080
+# Une seule image (gateway) sert shell + promote + diaspora sur la même origine.
+#
+# APIs (proxy défini dans deploy/nginx.conf) :
+#   /promote-api/*  -> backend promote (staff, ventes, stats)  :8390 /api/*
+#   /api/*          -> backend diaspora (onboarding)           :10002 /api/*
+#
+# Par défaut le proxy pointe vers les backends de la MACHINE HÔTE via
+# host.docker.internal (activé par extra_hosts ci-dessous). Pour des backends
+# conteneurisés, mettez-les sur le même réseau et changez les cibles proxy_pass
+# de nginx.conf par les noms de services (ex. http://promote-backend:8390).
+services:
+  union:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: afriland-union:latest
+    container_name: afriland-union
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    # Permet au conteneur d'atteindre un backend qui tourne sur l'hôte
+    # (http://host.docker.internal:8390 / :10002).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
