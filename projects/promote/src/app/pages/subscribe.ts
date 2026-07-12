@@ -1,4 +1,4 @@
-import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Api } from '../core/api';
@@ -415,11 +415,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
           @if (createdRef()) {
             <div style="padding:10px 16px;background:var(--surface-2);border-radius:10px;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin:12px 0 20px">{{ i18n.t('processing_ref') }} <span style="font-weight:700;color:var(--navy)" class="mono">{{ createdRef() }}</span></div>
           }
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;padding:16px;background:var(--surface-2);border-radius:12px;border:1px dashed var(--border-2)">
-            <div style="font-size:11px;font-weight:600;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Simulation</div>
-            <button (click)="simulate('success')" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #059669;background:#ECFDF5;color:#059669;font-size:14px;font-weight:700;cursor:pointer">{{ i18n.t('demo_approve') }}</button>
-            <button (click)="simulate('failed')" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #DC2626;background:#FEF2F2;color:#DC2626;font-size:14px;font-weight:700;cursor:pointer">{{ i18n.t('demo_fail') }}</button>
-          </div>
+          <div style="font-size:12px;color:var(--muted-2);margin-top:12px">{{ i18n.t('pay_wait_hint') }}</div>
         </div>
       </div>
     }
@@ -506,10 +502,13 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
     .sum-v { font-size:12px;font-weight:600;color:var(--navy);text-align:right;overflow-wrap:break-word;min-width:0 }
   `],
 })
-export class SubscribePage {
+export class SubscribePage implements OnDestroy {
   protected i18n = inject(I18n);
   protected api = inject(Api);
   private router = inject(Router);
+
+  /** Timer du suivi de paiement mobile money (polling du statut backend). */
+  private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   /**
    * « Accueil » = racine du portail. Dans le système unifié, le shell redirige
@@ -870,7 +869,7 @@ export class SubscribePage {
         this.submitting.set(false);
         this.createdRef.set(sub.ref);
         const m = this.payMethod();
-        if (m === 'om' || m === 'mtn') this.phase.set('paying');
+        if (m === 'om' || m === 'mtn') { this.phase.set('paying'); this.startPolling(sub.ref); }
         else this.phase.set('success');
       },
       error: (e) => {
@@ -889,16 +888,55 @@ export class SubscribePage {
     } as Record<string, string>)[code || ''] || code || '';
   }
 
-  simulate(outcome: 'success' | 'failed') {
-    const ref = this.createdRef();
-    this.api.paySubscription(ref, outcome).subscribe({
-      next: () => this.phase.set(outcome === 'success' ? 'success' : 'failure'),
-      error: () => this.phase.set('failure'),
-    });
+  /** Statuts terminaux renvoyés par le backend (insensible à la casse). */
+  private static readonly PAID = ['paid', 'success'];
+  private static readonly FAILED = ['failed', 'rejected', 'cancelled', 'canceled', 'expired', 'error'];
+  private static readonly MAX_POLL_MS = 3 * 60_000; // abandon après 3 min sans confirmation
+  private static readonly POLL_INTERVAL_MS = 3000;
+
+  /**
+   * Interroge le backend (payStatus) jusqu'à confirmation réelle du paiement.
+   * Le push mobile money est déclenché par le backend à la création de la
+   * souscription ; cette page reflète l'état réel, sans plus aucune simulation.
+   */
+  private startPolling(ref: string) {
+    this.stopPolling();
+    const started = Date.now();
+    let inFlight = false;
+    this.pollHandle = setInterval(() => {
+      if (inFlight) return;
+      if (Date.now() - started > SubscribePage.MAX_POLL_MS) {
+        this.stopPolling();
+        this.failureMsg.set(this.i18n.t('pay_timeout'));
+        this.phase.set('failure');
+        return;
+      }
+      inFlight = true;
+      this.api.subscriptionStatus(ref).subscribe({
+        next: (s) => {
+          inFlight = false;
+          const st = (s.payStatus || '').toLowerCase();
+          if (SubscribePage.PAID.includes(st)) { this.stopPolling(); this.phase.set('success'); }
+          else if (SubscribePage.FAILED.includes(st)) {
+            this.stopPolling();
+            this.failureMsg.set(s.message || '');
+            this.phase.set('failure');
+          }
+          // sinon (pending/awaiting/initiated) : on continue d'attendre
+        },
+        error: () => { inFlight = false; }, // erreur réseau transitoire : on réessaiera au prochain tick
+      });
+    }, SubscribePage.POLL_INTERVAL_MS);
   }
 
+  private stopPolling() {
+    if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; }
+  }
+
+  ngOnDestroy() { this.stopPolling(); }
+
   copyRef() { navigator.clipboard?.writeText(this.createdRef()); }
-  restart() { window.location.reload(); }
-  retry() { this.phase.set('funnel'); this.step.set(4); }
-  goHome() { this.goToHome(); }
+  restart() { this.stopPolling(); window.location.reload(); }
+  retry() { this.stopPolling(); this.phase.set('funnel'); this.step.set(4); }
+  goHome() { this.stopPolling(); this.goToHome(); }
 }

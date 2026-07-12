@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../core/api';
 import { I18n } from '../core/i18n';
@@ -77,11 +77,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
           <div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:8px">{{ i18n.t('pay_processing_title') }}</div>
           <div style="font-size:13px;color:var(--muted);margin-bottom:16px">{{ i18n.t('processing_ussd') }}</div>
           <div style="padding:10px 16px;background:var(--surface-2);border-radius:10px;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-bottom:20px">{{ i18n.t('processing_ref') }} <span class="mono" style="font-weight:700;color:var(--navy)">{{ ref() }}</span></div>
-          <div style="display:flex;flex-direction:column;gap:8px;padding:16px;background:var(--surface-2);border-radius:12px;border:1px dashed var(--border-2)">
-            <div style="font-size:11px;font-weight:600;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px">Simulation</div>
-            <button (click)="simulate('success')" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #059669;background:#ECFDF5;color:#059669;font-size:14px;font-weight:700;cursor:pointer">{{ i18n.t('demo_approve') }}</button>
-            <button (click)="simulate('failed')" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid #DC2626;background:#FEF2F2;color:#DC2626;font-size:14px;font-weight:700;cursor:pointer">{{ i18n.t('demo_fail') }}</button>
-          </div>
+          <div style="font-size:12px;color:var(--muted-2)">{{ i18n.t('pay_wait_hint') }}</div>
         </div>
       </div>
     }
@@ -126,10 +122,13 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
     .pm-ic { width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center }
   `],
 })
-export class RechargePage {
+export class RechargePage implements OnDestroy {
   protected i18n = inject(I18n);
   private api = inject(Api);
   private router = inject(Router);
+
+  /** Timer du suivi de paiement mobile money (polling du statut backend). */
+  private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   phase = signal<Phase>('form');
   error = signal('');
@@ -175,7 +174,8 @@ export class RechargePage {
       next: (r) => {
         this.submitting.set(false);
         this.ref.set(r.ref);
-        this.phase.set(this.payMethod() === 'cash' ? 'success' : 'paying');
+        if (this.payMethod() === 'cash') { this.phase.set('success'); }
+        else { this.phase.set('paying'); this.startPolling(r.ref); }
       },
       error: (e) => {
         this.submitting.set(false);
@@ -184,12 +184,52 @@ export class RechargePage {
     });
   }
 
-  simulate(outcome: 'success' | 'failed') {
-    this.api.payRecharge(this.ref(), outcome).subscribe({
-      next: () => this.phase.set(outcome === 'success' ? 'success' : 'failure'),
-      error: () => this.phase.set('failure'),
-    });
+  /** Statuts terminaux renvoyés par le backend (insensible à la casse). */
+  private static readonly PAID = ['paid', 'success'];
+  private static readonly FAILED = ['failed', 'rejected', 'cancelled', 'canceled', 'expired', 'error'];
+  private static readonly MAX_POLL_MS = 3 * 60_000; // abandon après 3 min sans confirmation
+  private static readonly POLL_INTERVAL_MS = 3000;
+
+  /**
+   * Interroge le backend (payStatus) jusqu'à confirmation réelle du paiement.
+   * Le push mobile money est déclenché par le backend à la création de la recharge ;
+   * cette page reflète simplement l'état réel, sans plus aucune simulation.
+   */
+  private startPolling(ref: string) {
+    this.stopPolling();
+    const started = Date.now();
+    let inFlight = false;
+    this.pollHandle = setInterval(() => {
+      if (inFlight) return;
+      if (Date.now() - started > RechargePage.MAX_POLL_MS) {
+        this.stopPolling();
+        this.error.set(this.i18n.t('pay_timeout'));
+        this.phase.set('failure');
+        return;
+      }
+      inFlight = true;
+      this.api.rechargeStatus(ref).subscribe({
+        next: (s) => {
+          inFlight = false;
+          const st = (s.payStatus || '').toLowerCase();
+          if (RechargePage.PAID.includes(st)) { this.stopPolling(); this.phase.set('success'); }
+          else if (RechargePage.FAILED.includes(st)) {
+            this.stopPolling();
+            this.error.set(s.message || this.i18n.t('failure_msg'));
+            this.phase.set('failure');
+          }
+          // sinon (pending/awaiting/initiated) : on continue d'attendre
+        },
+        error: () => { inFlight = false; }, // erreur réseau transitoire : on réessaiera au prochain tick
+      });
+    }, RechargePage.POLL_INTERVAL_MS);
   }
 
-  goHome() { this.router.navigateByUrl('/'); }
+  private stopPolling() {
+    if (this.pollHandle) { clearInterval(this.pollHandle); this.pollHandle = null; }
+  }
+
+  ngOnDestroy() { this.stopPolling(); }
+
+  goHome() { this.stopPolling(); this.router.navigateByUrl('/'); }
 }

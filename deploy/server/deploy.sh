@@ -28,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Valeurs par défaut (surchargées par deploy/server/.env ou l'environnement)
 UNION_PORT="${UNION_PORT:-6080}"
+UNION_SSL_PORT="${UNION_SSL_PORT:-6443}"
 PROMOTE_PORT="${PROMOTE_PORT:-6390}"
 DIASPORA_PORT="${DIASPORA_PORT:-6002}"
 UNION_REPO="${UNION_REPO:-https://github.com/Efraim0601/union-portal.git}"
@@ -127,7 +128,7 @@ docker run -d --name afriland-union --restart unless-stopped \
   --add-host host.docker.internal:host-gateway \
   -e PROMOTE_UPSTREAM="host.docker.internal:${PROMOTE_PORT}" \
   -e DIASPORA_UPSTREAM="host.docker.internal:${DIASPORA_PORT}" \
-  -p "${UNION_PORT}:80" afriland-union:latest
+  -p "${UNION_PORT}:80" -p "${UNION_SSL_PORT}:443" afriland-union:latest
 ok "gateway démarré"
 
 # --- Vérification -----------------------------------------------------------
@@ -142,6 +143,8 @@ cat <<EOF
 
 \033[1;32m✅ Déploiement terminé.\033[0m
    • Portail unifié  : http://<serveur>:${UNION_PORT}
+   • Portail (HTTPS) : https://<serveur>:${UNION_SSL_PORT}   ← à utiliser pour la caméra/selfie
+                       (certificat auto-signé : accepter l'avertissement du navigateur une fois)
    • Backend promote : http://<serveur>:${PROMOTE_PORT}/api
    • Backend diaspora: http://<serveur>:${DIASPORA_PORT}/api
 

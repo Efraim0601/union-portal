@@ -8,10 +8,13 @@ FROM nginx:1.27-alpine
 # Upstreams backend paramétrables (envsubst au démarrage) — défauts = hôte.
 ENV PROMOTE_UPSTREAM=host.docker.internal:8390
 ENV DIASPORA_UPSTREAM=host.docker.internal:10002
+RUN apk add --no-cache openssl
 COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
+COPY deploy/40-selfsigned-cert.sh /docker-entrypoint.d/40-selfsigned-cert.sh
+RUN chmod +x /docker-entrypoint.d/40-selfsigned-cert.sh
 COPY dist/shell/browser/    /usr/share/nginx/html/
 COPY dist/promote/browser/  /usr/share/nginx/html/remotes/promote/
 COPY dist/diaspora/browser/ /usr/share/nginx/html/remotes/diaspora/
 COPY deploy/federation.manifest.prod.json /usr/share/nginx/html/federation.manifest.json
-EXPOSE 80
+EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]

@@ -18,6 +18,8 @@ services:
     container_name: afriland-union
     ports:
       - "8080:80"
+      # HTTPS (certificat auto-signé) — requis pour la caméra/selfie.
+      - "8443:443"
     restart: unless-stopped
     # Permet au conteneur d'atteindre un backend qui tourne sur l'hôte
     # (http://host.docker.internal:8390 / :10002).

@@ -28,7 +28,12 @@ FROM nginx:1.27-alpine
 # Défauts = backends sur l'hôte (host.docker.internal) ; surchargés au `docker run -e`.
 ENV PROMOTE_UPSTREAM=host.docker.internal:8390
 ENV DIASPORA_UPSTREAM=host.docker.internal:10002
+# openssl : requis pour générer le certificat TLS auto-signé au démarrage.
+RUN apk add --no-cache openssl
 COPY deploy/nginx.conf /etc/nginx/templates/default.conf.template
+# Génère le certificat auto-signé avant le lancement de nginx (HTTPS/caméra).
+COPY deploy/40-selfsigned-cert.sh /docker-entrypoint.d/40-selfsigned-cert.sh
+RUN chmod +x /docker-entrypoint.d/40-selfsigned-cert.sh
 # Shell (host) à la racine
 COPY --from=build /app/dist/shell/browser/    /usr/share/nginx/html/
 # Remotes sous /remotes/*
@@ -37,6 +42,6 @@ COPY --from=build /app/dist/diaspora/browser/ /usr/share/nginx/html/remotes/dias
 # Manifest de PROD (chemins same-origin) écrase celui de dev (localhost:*)
 COPY deploy/federation.manifest.prod.json     /usr/share/nginx/html/federation.manifest.json
 
-EXPOSE 80
+EXPOSE 80 443
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1
 CMD ["nginx", "-g", "daemon off;"]
