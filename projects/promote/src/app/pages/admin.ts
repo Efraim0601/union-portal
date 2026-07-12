@@ -471,6 +471,7 @@ const PAGE = 10;
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                   <button (click)="saveTpw()" [disabled]="tpwBusy()" class="btn btn-primary" style="width:auto;padding:10px 18px;border-radius:10px">Enregistrer</button>
                   <button (click)="doTestTpw()" [disabled]="tpwBusy()" class="btn-soft" style="border-radius:10px">{{ tpwBusy() ? '…' : 'Tester la connexion' }}</button>
+                  <button (click)="resetTpw()" [disabled]="tpwBusy()" class="btn-soft" style="border-radius:10px;margin-left:auto;color:#DC2626;border-color:#FCA5A5" title="Efface tous les identifiants TrustPayWay en base">Réinitialiser les identifiants</button>
                 </div>
                 <div style="font-size:11px;color:var(--muted-2);margin-top:10px">Note : l'activation de la passerelle (provider) reste pilotée par la variable d'environnement et nécessite un redémarrage. Cet écran configure la connexion.</div>
               } @else { <div style="color:var(--muted);font-size:13px">Chargement…</div> }
@@ -1086,6 +1087,16 @@ export class AdminPage {
     this.api.testTrustPayWay().subscribe({
       next: (r) => { this.tpwBusy.set(false); if (r.ok) this.tpwMsg.set(r.message); else this.tpwErr.set(r.message); },
       error: (e) => { this.tpwBusy.set(false); this.tpwErr.set(e?.error?.message || 'Erreur'); },
+    });
+  }
+  /** Efface tous les identifiants TrustPayWay en base (URL, App ID, clé secrète, secret webhook,
+   *  timeouts). Action destructive → confirmation. Les paiements MoMo sont coupés jusqu'à reconfig. */
+  resetTpw() {
+    if (!confirm('Effacer TOUS les identifiants TrustPayWay en base (URL, Application ID, clé secrète, secret webhook, timeouts) ?\n\nLes paiements Mobile Money seront désactivés jusqu\'à une nouvelle configuration.')) return;
+    this.tpwBusy.set(true); this.tpwMsg.set(''); this.tpwErr.set('');
+    this.api.resetTrustPayWaySettings().subscribe({
+      next: (r) => { this.tpw.set(r); this.tpwSecret.set(''); this.tpwWebhook.set(''); this.tpwBusy.set(false); this.tpwMsg.set('Identifiants TrustPayWay réinitialisés (base vidée)'); },
+      error: (e) => { this.tpwBusy.set(false); this.tpwErr.set(e?.error?.error || e?.error?.message || 'Erreur'); },
     });
   }
 }

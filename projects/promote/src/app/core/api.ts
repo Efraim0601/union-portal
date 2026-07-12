@@ -284,6 +284,11 @@ export class Api {
   testTrustPayWay(): Observable<TestResult> {
     return this.http.post<TestResult>(`${this.base}/settings/trustpayway/test`, {});
   }
+  /** Efface TOUS les identifiants/config TrustPayWay en base (secret compris, ce que le PUT ne
+   *  permet pas puisqu'un secret vide y est conservé). Scope TrustPayWay uniquement. */
+  resetTrustPayWaySettings(): Observable<TrustPayWaySettingsDto> {
+    return this.http.delete<TrustPayWaySettingsDto>(`${this.base}/settings/trustpayway/credentials`);
+  }
   generalSettings(): Observable<GeneralSettingsDto> {
     return this.http.get<GeneralSettingsDto>(`${this.base}/settings/general`);
   }
