@@ -50,8 +50,18 @@ import {
   UserDto,
 } from './models';
 
-/** Typed wrapper over the backend REST API (base path /api). */
-@Injectable({ providedIn: 'root' })
+/**
+ * Typed wrapper over the backend REST API (base path /api).
+ *
+ * NON `providedIn: 'root'` À DESSEIN : en fédération native, un service root est
+ * lié à l'injecteur racine du SHELL, qui ne fournit pas le HttpClient porteur du
+ * `tokenInterceptor` (celui-ci n'est déclaré que dans les providers de la route
+ * promote, cf. remote.routes.ts). Résultat : les appels partaient sans header
+ * `Authorization` → 403 sur tout l'espace authentifié. En le fournissant au
+ * niveau de la route (remote.routes.ts) et de l'app standalone (app.config.ts),
+ * `Api` est créé dans le bon injecteur et hérite du HttpClient intercepté.
+ */
+@Injectable()
 export class Api {
   private http = inject(HttpClient);
   // Préfixe dédié à promote pour éviter la collision avec le /api de diaspora

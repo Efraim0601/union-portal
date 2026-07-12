@@ -30,7 +30,10 @@ function decodeJwt(token: string): JwtClaims | null {
  * (shared contract with the backend) — never the stored user object — which
  * avoids stale-token 403s after a role change.
  */
-@Injectable({ providedIn: 'root' })
+// NON `providedIn: 'root'` : fourni au niveau de la route promote (remote.routes.ts)
+// et de l'app standalone (app.config.ts), pour partager l'injecteur de `Api` et le
+// HttpClient porteur du `tokenInterceptor`. Cf. commentaire détaillé dans api.ts.
+@Injectable()
 export class Auth {
   private api = inject(Api);
   private router = inject(Router);

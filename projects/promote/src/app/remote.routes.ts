@@ -4,6 +4,8 @@ import { routes as promoteRoutes } from './app.routes';
 import { tokenInterceptor } from './core/token-interceptor';
 import { App } from './app';
 import { PROMOTE_BASE } from './core/base';
+import { Api } from './core/api';
+import { Auth } from './core/auth';
 
 /**
  * Routes exposées au HOST via Native Federation ('./Routes').
@@ -24,6 +26,11 @@ export const routes: Routes = [
     providers: [
       provideHttpClient(withInterceptors([tokenInterceptor])),
       { provide: PROMOTE_BASE, useValue: '/promote' },
+      // Fournis ici (et non `providedIn: 'root'`) pour que `Api`/`Auth` héritent
+      // du HttpClient intercepté ci-dessus. Sinon, en fédération, ils seraient liés
+      // à l'injecteur racine du shell (sans intercepteur) → 403 partout.
+      Api,
+      Auth,
     ],
     component: App,
     children: promoteRoutes,
