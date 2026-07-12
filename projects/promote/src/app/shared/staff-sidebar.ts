@@ -2,6 +2,7 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Auth } from '../core/auth';
 import { I18n } from '../core/i18n';
+import { PROMOTE_BASE, promoteUrl } from '../core/base';
 
 interface NavItem { id: string; icon: string; label: string; route: string; external?: boolean; }
 
@@ -53,6 +54,7 @@ export class StaffSidebar {
   protected i18n = inject(I18n);
   private auth = inject(Auth);
   private router = inject(Router);
+  private base = inject(PROMOTE_BASE);
 
   active = input<string>('');
   open = signal(false);
@@ -88,8 +90,9 @@ export class StaffSidebar {
 
   go(route: string, external = false) {
     this.open.set(false);
-    if (external) { window.open(route, '_blank', 'noopener'); return; }
-    this.router.navigateByUrl(route);
+    const url = promoteUrl(this.base, route);
+    if (external) { window.open(url, '_blank', 'noopener'); return; }
+    this.router.navigateByUrl(url);
   }
   logout() { this.open.set(false); this.auth.logout(); }
 }

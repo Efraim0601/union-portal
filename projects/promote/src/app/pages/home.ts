@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { I18n } from '../core/i18n';
+import { PROMOTE_BASE, promoteUrl } from '../core/base';
 
 @Component({
   selector: 'app-home',
@@ -88,8 +89,9 @@ import { I18n } from '../core/i18n';
 export class HomePage {
   protected i18n = inject(I18n);
   private router = inject(Router);
+  private base = inject(PROMOTE_BASE);
 
   go(path: string) {
-    this.router.navigateByUrl(path);
+    this.router.navigateByUrl(promoteUrl(this.base, path));
   }
 }

@@ -5,6 +5,7 @@ import { Auth } from '../core/auth';
 import { I18n } from '../core/i18n';
 import { AgentStats, SubscriptionDto } from '../core/models';
 import { StaffSidebar } from '../shared/staff-sidebar';
+import { PROMOTE_BASE, promoteUrl } from '../core/base';
 
 const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n)) + ' F';
 const PAGE = 8;
@@ -143,6 +144,7 @@ export class DashboardPage {
   private api = inject(Api);
   private auth = inject(Auth);
   private router = inject(Router);
+  private base = inject(PROMOTE_BASE);
 
   stats = signal<AgentStats | null>(null);
   sales = signal<SubscriptionDto[]>([]);
@@ -211,7 +213,7 @@ export class DashboardPage {
   val(e: Event) { return (e.target as HTMLInputElement).value; }
   price = (n: number) => fcfa(n);
   date = (iso: string) => (iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : '');
-  go(r: string) { this.router.navigateByUrl(r); }
+  go(r: string) { this.router.navigateByUrl(promoteUrl(this.base, r)); }
 
   badge(s: SubscriptionDto) {
     if (isPaid(s)) return { label: this.i18n.t('st_paid'), bg: '#ECFDF5', color: '#059669' };
