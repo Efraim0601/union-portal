@@ -1,6 +1,6 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import {
   Agency,
   ApplicationCreate,
@@ -13,6 +13,37 @@ import {
   Subsector,
 } from './application.model';
 import { EnterpriseApplicationCreate } from './enterprise-application.model';
+
+/** Référentiels tels que le backend FastAPI les renvoie (noms de champs différents du front). */
+interface BackendCountry {
+  iso_code: string;
+  name_fr: string;
+  calling_code?: string;
+}
+interface BackendNationality {
+  code: string;
+  label: string;
+}
+
+/** Envoi d'un OTP WhatsApp : le backend distingue « accepté par Callbell » de « livré au client ». */
+export interface WhatsappOtpSendResult {
+  ok: boolean;
+  message?: string;
+  whatsapp_accepted?: boolean;
+  whatsapp_delivered?: boolean;
+  whatsapp_delivery_status?: string;
+  /** Renseigné uniquement quand WhatsApp n'a pas livré le code : à afficher au client. */
+  fallback_otp?: string;
+  fallback_display?: boolean;
+}
+
+export interface WhatsappOtpVerifyResult {
+  ok: boolean;
+  verified: boolean;
+  session_id: string;
+  whatsapp_otp_verified?: boolean;
+  whatsapp_otp_verified_at?: string;
+}
 
 /**
  * Wrapper typé de l'API FastAPI diaspora-onboarding (base /api).
@@ -62,19 +93,27 @@ export class DiasporaApi {
   }
 
   // ---- Pré-onboarding : OTP WhatsApp (Callbell, côté backend) ----
-  sendWhatsappOtp(phone: string): Observable<{ pre_onboarding_session_id: string }> {
-    return this.http.post<{ pre_onboarding_session_id: string }>(
-      `${this.base}/pre-onboarding/whatsapp-otp/send`,
-      { phone },
+  // Routes réelles : POST /pre-onboarding/otp/{send,verify} (app/routers/pre_onboarding.py).
+  // Le `session_id` est fourni par le CLIENT et sert de clé de la session OTP
+  // côté backend : il doit être identique entre l'envoi et la vérification.
+  //
+  // Le backend ne confirme l'envoi qu'une fois la LIVRAISON WhatsApp établie.
+  // Si Meta ne remet pas le message, il renvoie `fallback_otp` : le code est
+  // alors affiché au client pour ne pas bloquer le parcours.
+  sendWhatsappOtp(phone: string, sessionId: string): Observable<WhatsappOtpSendResult> {
+    return this.http.post<WhatsappOtpSendResult>(
+      `${this.base}/pre-onboarding/otp/send`,
+      { session_id: sessionId, phone },
     );
   }
   verifyWhatsappOtp(
     phone: string,
     code: string,
-  ): Observable<{ pre_onboarding_session_id: string; verified: boolean }> {
-    return this.http.post<{ pre_onboarding_session_id: string; verified: boolean }>(
-      `${this.base}/pre-onboarding/whatsapp-otp/verify`,
-      { phone, code },
+    sessionId: string,
+  ): Observable<WhatsappOtpVerifyResult> {
+    return this.http.post<WhatsappOtpVerifyResult>(
+      `${this.base}/pre-onboarding/otp/verify`,
+      { session_id: sessionId, phone, otp: code },
     );
   }
 
@@ -92,11 +131,26 @@ export class DiasporaApi {
   }
 
   // ---- Référentiels ----
+  // Le backend expose ses propres noms de champs (iso_code/name_fr/calling_code,
+  // label…) : on les projette ici sur le modèle du front. Sans cette projection,
+  // les listes déroulantes affichent « undefined » et bloquent le parcours.
   countries(): Observable<Country[]> {
-    return this.http.get<Country[]>(`${this.base}/countries/active`);
+    return this.http
+      .get<BackendCountry[]>(`${this.base}/countries/active`)
+      .pipe(
+        map((list) =>
+          (list ?? []).map((c) => ({
+            code: c.iso_code,
+            name: c.name_fr,
+            dial_code: c.calling_code,
+          })),
+        ),
+      );
   }
   nationalities(): Observable<Nationality[]> {
-    return this.http.get<Nationality[]>(`${this.base}/nationalities/active`);
+    return this.http
+      .get<BackendNationality[]>(`${this.base}/nationalities/active`)
+      .pipe(map((list) => (list ?? []).map((n) => ({ code: n.code, name: n.label }))));
   }
   agencies(): Observable<Agency[]> {
     return this.http.get<Agency[]>(`${this.base}/agencies/active`);

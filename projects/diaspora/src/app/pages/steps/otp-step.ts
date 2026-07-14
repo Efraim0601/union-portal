@@ -26,6 +26,20 @@ const RESEND_COOLDOWN_S = 60;
           </onb-form-field>
         }
 
+        @if (fallbackOtp()) {
+          <div style="border:1px solid #F5C542;background:#FFF9E6;border-radius:10px;padding:12px 14px;display:grid;gap:4px;">
+            <p style="font-size:12.5px;color:#8A6100;margin:0;font-weight:600;">
+              Livraison WhatsApp indisponible
+            </p>
+            <p style="font-size:12.5px;color:#6B5200;margin:0;">
+              Nous n'avons pas pu vous remettre le code par WhatsApp. Voici votre code de vérification :
+            </p>
+            <p style="font-size:22px;letter-spacing:4px;font-weight:700;color:#151821;margin:4px 0 0;">
+              {{ fallbackOtp() }}
+            </p>
+          </div>
+        }
+
         @if (error()) { <p style="font-size:12px;color:#C8102E;margin:0;">{{ error() }}</p> }
 
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
@@ -55,6 +69,8 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
   verifying = signal(false);
   code = signal('');
   error = signal<string | null>(null);
+  /** Code renvoyé par le backend quand WhatsApp n'a PAS livré le message (repli anti-blocage). */
+  fallbackOtp = signal<string | null>(null);
   cooldown = signal(0);
   private cooldownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -62,17 +78,28 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
     this.sendOtp();
   }
 
+  /** Clé de la session OTP côté backend : générée par le client, identique entre envoi et vérification. */
+  private sessionId(): string {
+    let id = this.model.pre_onboarding_session_id;
+    if (!id) {
+      id = crypto.randomUUID();
+      this.model = { ...this.model, pre_onboarding_session_id: id };
+      this.modelChange.emit(this.model);
+    }
+    return id;
+  }
+
   sendOtp(): void {
     if (this.sending() || this.cooldown() > 0) return;
     this.sending.set(true);
     this.error.set(null);
-    this.api.sendWhatsappOtp(this.phone).subscribe({
+    this.fallbackOtp.set(null);
+    this.api.sendWhatsappOtp(this.phone, this.sessionId()).subscribe({
       next: (res) => {
         this.sending.set(false);
         this.sent.set(true);
-        if (res?.pre_onboarding_session_id) {
-          this.modelChange.emit({ ...this.model, pre_onboarding_session_id: res.pre_onboarding_session_id });
-        }
+        // WhatsApp n'a pas remis le code : on l'affiche pour ne pas bloquer le parcours.
+        if (res?.fallback_otp) this.fallbackOtp.set(res.fallback_otp);
         this.startCooldown();
       },
       error: () => {
@@ -100,14 +127,14 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
     if (this.code().length !== 6) { this.error.set('Saisissez le code à 6 chiffres.'); return; }
     this.verifying.set(true);
     this.error.set(null);
-    this.api.verifyWhatsappOtp(this.phone, this.code()).subscribe({
+    this.api.verifyWhatsappOtp(this.phone, this.code(), this.sessionId()).subscribe({
       next: (res) => {
         this.verifying.set(false);
         this.modelChange.emit({
           ...this.model,
-          pre_onboarding_session_id: res?.pre_onboarding_session_id ?? this.model.pre_onboarding_session_id,
+          pre_onboarding_session_id: res?.session_id ?? this.model.pre_onboarding_session_id,
           whatsapp_otp_verified: true,
-          whatsapp_otp_verified_at: new Date().toISOString(),
+          whatsapp_otp_verified_at: res?.whatsapp_otp_verified_at ?? new Date().toISOString(),
         });
         this.verified.emit();
       },
