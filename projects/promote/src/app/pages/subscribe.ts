@@ -3,12 +3,25 @@ import { Router } from '@angular/router';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Api } from '../core/api';
 import { I18n } from '../core/i18n';
-import { AgencyDto, ConfigDto, CreateSubscriptionRequest, ProductDto } from '../core/models';
+import {
+  AgencyDto, ConfigDto, CreateSubscriptionRequest, ProductCategoryDto, ProductComponentDto, ProductDto,
+} from '../core/models';
 import { formatPhone, matchesOperator } from '../shared/constants';
 import { PhoneFieldComponent } from '../shared/fields';
 import { PhotoCaptureComponent } from '../shared/photo-capture';
 
 const NIU_MAX = 20;
+
+/**
+ * Composants « réservés » : sur un produit CARD, le backend s'en sert pour surcharger la
+ * tarification (cf. SubscriptionService.configForProduct) — ce ne sont pas des éléments de
+ * package. Tout autre composant décrit le CONTENU vendu avec le produit : c'est ce qu'on
+ * déroule au client. Un produit qui en possède au moins un est donc un « package ».
+ */
+const CONFIG_CKEYS = new Set([
+  'price', 'fees', 'transport', 'rechargeMin', 'rechargeMax',
+  'rechargeInitiale', 'passPremium', 'rechargeInitialeBancaire', 'passPremiumBancaire',
+]);
 
 /**
  * Catalogue de démonstration — utilisé UNIQUEMENT si le backend (/api/products)
@@ -77,41 +90,76 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
                 <div style="font-family:var(--font-serif);font-size:22px;font-weight:500;letter-spacing:-0.4px;color:var(--navy);margin-bottom:4px">{{ i18n.t('select_product') }}</div>
                 <div style="font-size:13px;color:var(--muted);margin-bottom:20px">{{ i18n.t('home_subscribe_desc') }}</div>
                 <div style="display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px">
-                  @for (cf of categories(); track cf) {
-                    <button (click)="cat.set(cf)" class="chip" [class.chip-on]="cat() === cf">{{ cf === '__all' ? i18n.t('cat_all') : cf }}</button>
+                  @for (cf of categories(); track cf.code) {
+                    <button (click)="cat.set(cf.code)" class="chip" [class.chip-on]="cat() === cf.code">{{ cf.label }}</button>
                   }
                 </div>
                 <div style="display:grid;grid-template-columns:1fr;gap:12px">
                   @for (p of filteredProducts(); track p.id) {
-                    <button (click)="selectProduct(p)" class="prod-card" [class.prod-on]="selected()?.id === p.id">
-                      <div class="prod-mini" [style.background]="cardGradient(p)">
-                        @if (p.imageKey) {
-                          <img [src]="api.productImageUrl(p.id)" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
-                        } @else {
-                          <div style="position:absolute;top:6px;left:6px;width:12px;height:9px;border-radius:2px;background:linear-gradient(135deg,#C9A227,#E0B73A)"></div>
-                          <span style="font-size:7px;font-weight:800;color:rgba(255,255,255,.85);letter-spacing:.5px">{{ p.groupCode }}</span>
+                    <div class="prod-card" [class.prod-on]="selected()?.id === p.id">
+                      <button (click)="selectProduct(p)" class="prod-head">
+                        <div class="prod-mini" [style.background]="cardGradient(p)">
+                          @if (p.imageKey) {
+                            <img [src]="api.productImageUrl(p.id)" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
+                          } @else {
+                            <div style="position:absolute;top:6px;left:6px;width:12px;height:9px;border-radius:2px;background:linear-gradient(135deg,#C9A227,#E0B73A)"></div>
+                            <span style="font-size:7px;font-weight:800;color:rgba(255,255,255,.85);letter-spacing:.5px">{{ p.groupCode }}</span>
+                          }
+                        </div>
+                        <div style="flex:1;min-width:0">
+                          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                            <span style="font-size:14px;font-weight:700;color:var(--navy)">{{ p.label }}</span>
+                            @if (hasPromo(p)) { <span class="promo-tag">{{ i18n.t('promo') }}</span> }
+                            @if (isPackage(p)) { <span class="pkg-tag">{{ i18n.t('pkg_tag') }}</span> }
+                          </div>
+                          <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
+                            @if (!isPackage(p)) {
+                              <span style="font-size:12px;color:var(--muted-2);padding:2px 6px;border-radius:4px;background:var(--surface-3)">{{ kindLabel(p) }}</span>
+                            }
+                            @if (hasPromo(p)) { <span style="font-size:12px;color:var(--muted-2);text-decoration:line-through">{{ price(p.basePrice) }}</span> }
+                            <span style="font-size:14px;font-weight:700" [style.color]="hasPromo(p) ? 'var(--primary)' : 'var(--navy)'">{{ price(p.effectivePrice) }}</span>
+                          </div>
+                          @if (isPackage(p)) {
+                            <div style="font-size:11.5px;color:var(--muted);margin-top:4px">{{ i18n.t('pkg_count', { n: packageItems(p).length }) }}</div>
+                          }
+                        </div>
+                        <div style="flex-shrink:0;display:flex;align-items:center">
+                          <div class="radio" [class.radio-on]="selected()?.id === p.id">
+                            @if (selected()?.id === p.id) { <div class="radio-dot"></div> }
+                          </div>
+                        </div>
+                      </button>
+
+                      <!-- Contenu du package : déroulé automatiquement à la sélection -->
+                      @if (isPackage(p)) {
+                        <button (click)="togglePackage(p)" class="pkg-toggle" [attr.aria-expanded]="isPackageOpen(p)">
+                          {{ isPackageOpen(p) ? i18n.t('pkg_hide') : i18n.t('pkg_show') }}
+                          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"
+                               [style.transform]="isPackageOpen(p) ? 'rotate(180deg)' : 'none'" style="transition:transform .2s">
+                            <path d="M6 9l6 6 6-6"></path>
+                          </svg>
+                        </button>
+                        @if (isPackageOpen(p)) {
+                          <div class="pkg-body fade-in">
+                            @if (p.description) { <div class="pkg-desc">{{ p.description }}</div> }
+                            <div class="pkg-h">{{ i18n.t('pkg_contents') }}</div>
+                            @for (c of packageItems(p); track c.ckey + c.label) {
+                              <div class="pkg-row">
+                                <span class="pkg-l">
+                                  <svg width="13" height="13" fill="none" stroke="#059669" stroke-width="3" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 6L9 17l-5-5"></path></svg>
+                                  {{ c.label }}
+                                </span>
+                                <span class="pkg-v" [class.pkg-inc]="c.amount <= 0">{{ c.amount > 0 ? price(c.amount) : i18n.t('pkg_included') }}</span>
+                              </div>
+                            }
+                            <div class="pkg-note">{{ i18n.t('pkg_price_note', { price: price(p.effectivePrice) }) }}</div>
+                          </div>
                         }
-                      </div>
-                      <div style="flex:1;min-width:0">
-                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                          <span style="font-size:14px;font-weight:700;color:var(--navy)">{{ p.label }}</span>
-                          @if (hasPromo(p)) { <span class="promo-tag">{{ i18n.t('promo') }}</span> }
-                        </div>
-                        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
-                          <span style="font-size:12px;color:var(--muted-2);padding:2px 6px;border-radius:4px;background:var(--surface-3)">{{ p.kind }}</span>
-                          @if (hasPromo(p)) { <span style="font-size:12px;color:var(--muted-2);text-decoration:line-through">{{ price(p.basePrice) }}</span> }
-                          <span style="font-size:14px;font-weight:700" [style.color]="hasPromo(p) ? 'var(--primary)' : 'var(--navy)'">{{ price(p.effectivePrice) }}</span>
-                        </div>
-                      </div>
-                      <div style="flex-shrink:0;display:flex;align-items:center">
-                        <div class="radio" [class.radio-on]="selected()?.id === p.id">
-                          @if (selected()?.id === p.id) { <div class="radio-dot"></div> }
-                        </div>
-                      </div>
-                    </button>
+                      }
+                    </div>
                   }
                   @if (filteredProducts().length === 0) {
-                    <div style="text-align:center;color:var(--muted);padding:24px">…</div>
+                    <div style="text-align:center;color:var(--muted);padding:24px">{{ i18n.t('no_product') }}</div>
                   }
                 </div>
               </div>
@@ -366,6 +414,17 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
                     <div class="sum-row"><span class="sum-k">{{ r.label }}</span><span class="sum-v">{{ r.value }}</span></div>
                   }
                 </div>
+                @if (selectedPackageItems().length) {
+                  <div class="sum-card">
+                    <div class="sum-h"><svg width="16" height="16" fill="none" stroke="#C8102E" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"></path></svg>{{ i18n.t('summary_package') }} — {{ selected()?.label }}</div>
+                    @for (c of selectedPackageItems(); track c.ckey + c.label) {
+                      <div class="sum-row">
+                        <span class="sum-k">{{ c.label }}</span>
+                        <span class="sum-v" [class.pkg-inc]="c.amount <= 0">{{ c.amount > 0 ? price(c.amount) : i18n.t('pkg_included') }}</span>
+                      </div>
+                    }
+                  </div>
+                }
                 <div class="sum-card">
                   <div class="sum-h"><svg width="16" height="16" fill="none" stroke="#C8102E" stroke-width="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>{{ i18n.t('summary_tariff') }}</div>
                   @for (r of tariffRows(); track r.label) {
@@ -461,9 +520,22 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
     .icon-sq:hover { border-color: var(--primary); background:#F9FAFB }
     .chip { flex-shrink:0;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--label);transition:all .2s }
     .chip-on { border-color: var(--primary); background:#FEF2F2; color: var(--primary) }
-    .prod-card { display:flex;gap:14px;padding:16px;border-radius:14px;border:2px solid var(--border);background:#fff;cursor:pointer;text-align:left;transition:all .2s;width:100% }
+    .prod-card { border-radius:14px;border:2px solid var(--border);background:#fff;transition:all .2s;width:100%;overflow:hidden }
     .prod-card:hover { border-color: var(--primary); box-shadow:0 2px 12px rgba(200,16,46,.08) }
     .prod-on { border-color: var(--primary); background:#FEF2F2 }
+    .prod-head { display:flex;gap:14px;padding:16px;width:100%;border:none;background:transparent;font:inherit;color:inherit;cursor:pointer;text-align:left }
+    .pkg-tag { padding:2px 6px;border-radius:4px;background:#EEF2FF;color:#4338CA;font-size:10px;font-weight:700;letter-spacing:.5px }
+    .pkg-toggle { display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:9px 16px;border:none;border-top:1px dashed var(--border-2);background:transparent;font:inherit;font-size:12px;font-weight:700;color:var(--primary);cursor:pointer }
+    .pkg-toggle:hover { background:rgba(200,16,46,.04) }
+    .pkg-body { padding:2px 16px 14px }
+    .pkg-desc { font-size:12px;color:var(--muted);line-height:1.45;white-space:pre-line;margin-bottom:10px }
+    .pkg-h { font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px }
+    .pkg-row { display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border) }
+    .pkg-row:last-of-type { border-bottom:none }
+    .pkg-l { display:flex;align-items:center;gap:6px;min-width:0;font-size:12.5px;color:var(--navy);text-align:left }
+    .pkg-v { flex-shrink:0;font-size:12px;font-weight:700;color:var(--navy) }
+    .pkg-inc { color:#059669 }
+    .pkg-note { margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--surface-2);font-size:11px;color:var(--muted);line-height:1.4 }
     .scroll-hint { position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:55;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:#fff;box-shadow:0 6px 18px rgba(200,16,46,.35);cursor:pointer;animation:hintBounce 1.6s ease infinite }
     .scroll-hint:hover { background:#A50D26 }
     @keyframes hintBounce { 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(5px)} }
@@ -530,10 +602,13 @@ export class SubscribePage implements OnDestroy {
   canScrollMore = signal(false);
 
   products = signal<ProductDto[]>([]);
+  productCategories = signal<ProductCategoryDto[]>([]);
   config = signal<ConfigDto | null>(null);
   agencies = signal<AgencyDto[]>([]);
   cat = signal('__all');
   selected = signal<ProductDto | null>(null);
+  /** Produit dont le contenu de package est déroulé (un seul à la fois). */
+  openPackage = signal<number | null>(null);
 
   // step 1
   firstName = signal(''); lastName = signal(''); sexe = signal(''); idType = signal('cni');
@@ -566,15 +641,39 @@ export class SubscribePage implements OnDestroy {
   ];
 
   categories = computed(() => {
-    const set = new Set<string>(['__all']);
     // Ne proposer que les catégories ayant au moins un produit VISIBLE (actif, non archivé) :
     // une catégorie sans produit vendable ne doit pas apparaître côté utilisateur.
-    for (const p of this.products()) if (p.active && !p.archived && p.groupCode) set.add(p.groupCode);
-    return [...set];
+    const codes = new Set<string>();
+    for (const p of this.products()) if (p.active && !p.archived && p.groupCode) codes.add(p.groupCode);
+    const meta = new Map(this.productCategories().map((c) => [c.code, c]));
+    const sorted = [...codes].sort((a, b) =>
+      (meta.get(a)?.sortOrder ?? 99) - (meta.get(b)?.sortOrder ?? 99) || a.localeCompare(b));
+    // Le chip affiche le libellé de la catégorie (« Cartes »), pas son code technique (« carte »).
+    return [
+      { code: '__all', label: this.i18n.t('cat_all') },
+      ...sorted.map((code) => ({ code, label: meta.get(code)?.label || code })),
+    ];
   });
   filteredProducts = computed(() => {
     const c = this.cat();
     return this.products().filter((p) => p.active && !p.archived && (c === '__all' || p.groupCode === c));
+  });
+
+  /** Contenu vendable de chaque produit (id → composants), hors clés de tarification réservées. */
+  private packageItemsById = computed(() => {
+    const m = new Map<number, ProductComponentDto[]>();
+    for (const p of this.products()) {
+      m.set(p.id, (p.components ?? []).filter((c) => !CONFIG_CKEYS.has(c.ckey) && !!c.label?.trim()));
+    }
+    return m;
+  });
+  packageItems = (p: ProductDto): ProductComponentDto[] => this.packageItemsById().get(p.id) ?? [];
+  isPackage = (p: ProductDto) => this.packageItems(p).length > 0;
+  isPackageOpen = (p: ProductDto) => this.openPackage() === p.id;
+  togglePackage(p: ProductDto) { this.openPackage.set(this.isPackageOpen(p) ? null : p.id); }
+  selectedPackageItems = computed(() => {
+    const p = this.selected();
+    return p ? (this.packageItemsById().get(p.id) ?? []) : [];
   });
 
   total = computed(() => {
@@ -601,6 +700,10 @@ export class SubscribePage implements OnDestroy {
     this.api.products().subscribe({
       next: (p) => this.products.set(p?.length ? p : DEMO_PRODUCTS),
       error: () => this.products.set(DEMO_PRODUCTS),
+    });
+    this.api.productCategories().subscribe({
+      next: (c) => this.productCategories.set(c),
+      error: () => {}, // sans catégories, les chips retombent sur le code du groupe
     });
     this.api.config().subscribe((c) => this.config.set(c));
     this.api.agencies().subscribe((a) => this.agencies.set(a));
@@ -709,7 +812,18 @@ export class SubscribePage implements OnDestroy {
     : p.groupCode?.toLowerCase().includes('master') || p.groupCode?.toLowerCase().includes('mc') ? 'linear-gradient(135deg,#7A0B1E,#C8102E)'
     : 'linear-gradient(135deg,#C8102E,#7A0B1E)';
 
-  selectProduct(p: ProductDto) { this.selected.set(p); }
+  /** Sélectionner un package déroule aussitôt son contenu : le client voit ce qu'il achète. */
+  selectProduct(p: ProductDto) {
+    this.selected.set(p);
+    this.openPackage.set(this.isPackage(p) ? p.id : null);
+  }
+
+  /** Le backend expose des types techniques (CARD/BANK) : on les traduit pour le client.
+   *  Un package porte déjà son badge, on ne double pas l'information. */
+  kindLabel(p: ProductDto): string {
+    const key = { CARD: 'kind_card', BANK: 'kind_bank' }[p.kind];
+    return key ? this.i18n.t(key) : p.kind;
+  }
 
   captureGeo() {
     if (!navigator.geolocation) return;
@@ -885,6 +999,11 @@ export class SubscribePage implements OnDestroy {
     return ({
       product_limit_reached: this.i18n.t('err_product_limit'),
       cni_exists: this.i18n.t('err_cni_exists'),
+      product_unavailable: this.i18n.t('err_product_unavailable'),
+      cni_invalid: this.i18n.t('cni_invalid'),
+      sara_receipt_required: this.i18n.t('err_sara_receipt'),
+      card_number_required: this.i18n.t('err_required_fields'),
+      invalid_kind: this.i18n.t('err_product_unavailable'),
     } as Record<string, string>)[code || ''] || code || '';
   }
 

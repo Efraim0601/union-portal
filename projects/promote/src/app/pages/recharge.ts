@@ -2,7 +2,7 @@ import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../core/api';
 import { I18n } from '../core/i18n';
-import { CreateRechargeRequest } from '../core/models';
+import { ConfigDto, CreateRechargeRequest } from '../core/models';
 
 type Phase = 'form' | 'paying' | 'success' | 'failure';
 const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
@@ -37,7 +37,10 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
             <div style="margin-bottom:16px">
               <label class="lab">{{ i18n.t('rech_amount') }} *</label>
               <input class="in" inputmode="numeric" placeholder="10 000" [value]="amount()" (input)="amount.set(val($event))">
-              <div style="font-size:11px;color:var(--muted-2);margin-top:4px">{{ i18n.t('rech_amount_hint') }}</div>
+              <div style="font-size:11px;color:var(--muted-2);margin-top:4px">
+                {{ i18n.t('rech_amount_hint') }}
+                @if (config(); as c) { <span> · {{ fcfa(c.rechargeMin) }} – {{ fcfa(c.rechargeMax) }}</span> }
+              </div>
             </div>
             <div style="margin-bottom:16px">
               <label class="lab" style="margin-bottom:10px">{{ i18n.t('pay_method') }}</label>
@@ -103,7 +106,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
         <div style="animation:shakeX .5s ease forwards;max-width:400px;width:100%">
           <svg width="80" height="80" viewBox="0 0 80 80" style="margin-bottom:20px"><circle cx="40" cy="40" r="36" fill="#DC2626" opacity=".1"></circle><circle cx="40" cy="40" r="20" fill="#DC2626"></circle><path d="M30 30l20 20M50 30l-20 20" stroke="#fff" stroke-width="3" stroke-linecap="round"></path></svg>
           <div style="font-size:22px;font-weight:800;color:#DC2626;margin-bottom:8px">{{ i18n.t('failure_title') }}</div>
-          <div style="font-size:14px;color:var(--muted);margin-bottom:24px">{{ i18n.t('failure_msg') }}</div>
+          <div style="font-size:14px;color:var(--muted);margin-bottom:24px">{{ error() || i18n.t('failure_msg') }}</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <button (click)="phase.set('form')" class="btn btn-primary" style="border-radius:12px">{{ i18n.t('failure_retry') }}</button>
             <button (click)="goHome()" class="btn-soft" style="width:100%;border-radius:12px;padding:14px">{{ i18n.t('failure_home') }}</button>
@@ -134,6 +137,14 @@ export class RechargePage implements OnDestroy {
   error = signal('');
   submitting = signal(false);
   ref = signal('');
+  config = signal<ConfigDto | null>(null);
+  readonly fcfa = fcfa;
+
+  constructor() {
+    // Bornes de montant : affichées sous le champ et vérifiées avant l'appel (le backend
+    // rejette sinon avec amount_out_of_range).
+    this.api.config().subscribe({ next: (c) => this.config.set(c), error: () => {} });
+  }
 
   firstName = signal(''); lastName = signal(''); phone = signal('');
   pan1 = signal(''); pan2 = signal(''); amount = signal('');
@@ -151,10 +162,32 @@ export class RechargePage implements OnDestroy {
     return parseInt(this.amount().replace(/\D/g, ''), 10) || 0;
   }
 
+  /** Bornes du montant rechargeable (paramétrage backend ; valeurs de repli si /config échoue). */
+  private amountRange(): { min: number; max: number } {
+    const c = this.config();
+    return { min: c?.rechargeMin ?? 0, max: c?.rechargeMax ?? Number.MAX_SAFE_INTEGER };
+  }
+
+  /** Traduit les codes d'erreur du backend en messages lisibles. */
+  private createError(code?: string): string {
+    const { min, max } = this.amountRange();
+    return ({
+      amount_out_of_range: this.i18n.t('err_amount_range', { min: fcfa(min), max: fcfa(max) }),
+      invalid_pan: this.i18n.t('err_invalid_pan'),
+      pay_phone_required: this.i18n.t('err_momo_phone'),
+      invalid_pay_method: this.i18n.t('err_pay_method'),
+      sara_receipt_required: this.i18n.t('err_sara_receipt'),
+    } as Record<string, string>)[code || ''] || code || this.i18n.t('failure_msg');
+  }
+
   submit() {
     this.error.set('');
     if (!this.firstName() || !this.lastName() || !this.phone() || !this.pan1() || !this.pan2() || !this.amountNum()) {
       this.error.set(this.i18n.t('err_required_fields')); return;
+    }
+    const { min, max } = this.amountRange();
+    if (this.amountNum() < min || this.amountNum() > max) {
+      this.error.set(this.i18n.t('err_amount_range', { min: fcfa(min), max: fcfa(max) })); return;
     }
     if (!this.payMethod()) { this.error.set(this.i18n.t('err_pay_method')); return; }
     if ((this.payMethod() === 'om' || this.payMethod() === 'mtn') && !this.momoPhone()) {
@@ -179,7 +212,7 @@ export class RechargePage implements OnDestroy {
       },
       error: (e) => {
         this.submitting.set(false);
-        this.error.set(e?.error?.error || e?.error?.message || this.i18n.t('failure_msg'));
+        this.error.set(this.createError(e?.error?.error || e?.error?.message));
       },
     });
   }

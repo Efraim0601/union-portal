@@ -522,7 +522,10 @@ export class ManagerPage {
     const l = label.trim();
     if (!l) { this.catErr.set(this.i18n.t('cat_required')); return; }
     this.catBusy.set(true); this.catErr.set('');
-    this.api.createCategory({ code: l, label: l }).subscribe({
+    // `active`/`subscriptionVisible` doivent être envoyés explicitement : côté backend ce sont des
+    // booléens primitifs, donc absents du JSON ils valent `false` — la catégorie naîtrait inactive
+    // et invisible dans le tunnel de souscription.
+    this.api.createCategory({ code: l, label: l, active: true, subscriptionVisible: true }).subscribe({
       next: (c) => {
         this.catBusy.set(false);
         this.categories.set([...this.categories().filter((x) => x.id !== c.id), c]
@@ -622,8 +625,9 @@ export class ManagerPage {
     const call = id ? this.api.updateProduct(id, req) : this.api.createProduct(req);
     call.subscribe({
       next: (p) => {
-        // Le backend ne persiste les composants (contenu du package) que sur UPDATE, pas sur CREATE.
-        // Pour un nouveau produit avec composants, on enchaîne donc create -> update pour les attacher.
+        // Le backend persiste désormais les composants (contenu du package) dès le CREATE, mais on
+        // garde l'enchaînement create -> update : il est idempotent et reste compatible avec un
+        // backend antérieur, qui les ignorait à la création.
         const needComponents = id == null && (req.components?.length ?? 0) > 0;
         const afterComponents = needComponents ? this.api.updateProduct(p.id, req) : null;
         const proceed = (prod: ProductDto) => {
