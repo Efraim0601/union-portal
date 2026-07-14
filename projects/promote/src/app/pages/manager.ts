@@ -522,10 +522,11 @@ export class ManagerPage {
     const l = label.trim();
     if (!l) { this.catErr.set(this.i18n.t('cat_required')); return; }
     this.catBusy.set(true); this.catErr.set('');
-    // `active`/`subscriptionVisible` doivent être envoyés explicitement : côté backend ce sont des
-    // booléens primitifs, donc absents du JSON ils valent `false` — la catégorie naîtrait inactive
-    // et invisible dans le tunnel de souscription.
-    this.api.createCategory({ code: l, label: l, active: true, subscriptionVisible: true }).subscribe({
+    // `active`/`subscriptionVisible`/`sortOrder` doivent être envoyés explicitement : côté backend
+    // ce sont des primitifs, donc absents du JSON ils valent `false`/`0` — la catégorie naîtrait
+    // inactive, invisible dans le tunnel, et passerait devant toutes les autres dans les filtres.
+    const sortOrder = Math.max(0, ...this.categories().map((c) => c.sortOrder)) + 1;
+    this.api.createCategory({ code: l, label: l, active: true, subscriptionVisible: true, sortOrder }).subscribe({
       next: (c) => {
         this.catBusy.set(false);
         this.categories.set([...this.categories().filter((x) => x.id !== c.id), c]

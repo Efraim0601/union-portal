@@ -127,8 +127,11 @@ export class Api {
     return `${this.base}/products/${id}/image${v != null ? `?v=${v}` : ''}`;
   }
   // ---- product categories (ADMIN / MANAGER) ----
-  productCategories(): Observable<ProductCategoryDto[]> {
-    return this.http.get<ProductCategoryDto[]>(`${this.base}/product-categories`);
+  /** `subscription: true` ne renvoie que les catégories actives ET visibles dans le tunnel public
+   *  (le backend filtre lui-même : c'est la source de vérité, pas un filtre côté client). */
+  productCategories(subscription = false): Observable<ProductCategoryDto[]> {
+    const url = `${this.base}/product-categories${subscription ? '?subscription=true' : ''}`;
+    return this.http.get<ProductCategoryDto[]>(url);
   }
   createCategory(req: ProductCategoryRequest): Observable<ProductCategoryDto> {
     return this.http.post<ProductCategoryDto>(`${this.base}/product-categories`, req);

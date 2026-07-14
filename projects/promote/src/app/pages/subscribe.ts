@@ -159,7 +159,9 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
                     </div>
                   }
                   @if (filteredProducts().length === 0) {
-                    <div style="text-align:center;color:var(--muted);padding:24px">{{ i18n.t('no_product') }}</div>
+                    <div style="text-align:center;color:var(--muted);padding:24px">
+                      {{ catalogLoaded() ? i18n.t('no_product') : i18n.t('loading_catalog') }}
+                    </div>
                   }
                 </div>
               </div>
@@ -602,6 +604,8 @@ export class SubscribePage implements OnDestroy {
   canScrollMore = signal(false);
 
   products = signal<ProductDto[]>([]);
+  /** Le catalogue a répondu : avant, « aucun produit » serait un mensonge — c'est un chargement. */
+  catalogLoaded = signal(false);
   productCategories = signal<ProductCategoryDto[]>([]);
   config = signal<ConfigDto | null>(null);
   agencies = signal<AgencyDto[]>([]);
@@ -640,12 +644,25 @@ export class SubscribePage implements OnDestroy {
     { id: 'sara', label: 'pay_sara', icon: 'S', color: '#1B1B2F', text: '#fff' },
   ];
 
+  /**
+   * Catégories que le backend autorise dans le tunnel (actives + `subscriptionVisible`).
+   * Vide = on n'a pas pu les charger (ou mode démo hors ligne) : on ne masque alors rien,
+   * plutôt que de présenter un catalogue vide au client.
+   */
+  private visibleCategories = computed(() => new Map(this.productCategories().map((c) => [c.code, c])));
+
+  /** Un produit rattaché à une catégorie que l'admin a retirée du tunnel n'est pas vendable ici. */
+  private inVisibleCategory = (p: ProductDto) => {
+    const meta = this.visibleCategories();
+    return meta.size === 0 || !p.groupCode || meta.has(p.groupCode);
+  };
+
   categories = computed(() => {
     // Ne proposer que les catégories ayant au moins un produit VISIBLE (actif, non archivé) :
     // une catégorie sans produit vendable ne doit pas apparaître côté utilisateur.
+    const meta = this.visibleCategories();
     const codes = new Set<string>();
-    for (const p of this.products()) if (p.active && !p.archived && p.groupCode) codes.add(p.groupCode);
-    const meta = new Map(this.productCategories().map((c) => [c.code, c]));
+    for (const p of this.sellableProducts()) if (p.groupCode) codes.add(p.groupCode);
     const sorted = [...codes].sort((a, b) =>
       (meta.get(a)?.sortOrder ?? 99) - (meta.get(b)?.sortOrder ?? 99) || a.localeCompare(b));
     // Le chip affiche le libellé de la catégorie (« Cartes »), pas son code technique (« carte »).
@@ -654,9 +671,13 @@ export class SubscribePage implements OnDestroy {
       ...sorted.map((code) => ({ code, label: meta.get(code)?.label || code })),
     ];
   });
+
+  private sellableProducts = computed(() =>
+    this.products().filter((p) => p.active && !p.archived && this.inVisibleCategory(p)));
+
   filteredProducts = computed(() => {
     const c = this.cat();
-    return this.products().filter((p) => p.active && !p.archived && (c === '__all' || p.groupCode === c));
+    return this.sellableProducts().filter((p) => c === '__all' || p.groupCode === c);
   });
 
   /** Contenu vendable de chaque produit (id → composants), hors clés de tarification réservées. */
@@ -711,12 +732,13 @@ export class SubscribePage implements OnDestroy {
 
   constructor() {
     this.api.products().subscribe({
-      next: (p) => this.products.set(p?.length ? p : DEMO_PRODUCTS),
-      error: () => this.products.set(DEMO_PRODUCTS),
+      next: (p) => { this.products.set(p?.length ? p : DEMO_PRODUCTS); this.catalogLoaded.set(true); },
+      error: () => { this.products.set(DEMO_PRODUCTS); this.catalogLoaded.set(true); },
     });
-    this.api.productCategories().subscribe({
+    // `true` : seules les catégories que l'admin expose au tunnel public.
+    this.api.productCategories(true).subscribe({
       next: (c) => this.productCategories.set(c),
-      error: () => {}, // sans catégories, les chips retombent sur le code du groupe
+      error: () => {}, // sans catégories : aucun filtrage, chips sur le code du groupe
     });
     this.api.config().subscribe((c) => this.config.set(c));
     this.api.agencies().subscribe((a) => this.agencies.set(a));
