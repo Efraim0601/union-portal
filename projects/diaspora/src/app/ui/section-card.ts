@@ -49,9 +49,9 @@ export class OnbSectionCard {
           Retour
         </button>
       }
-      <button type="submit" [disabled]="isLoading"
-        [style.background]="isLoading ? '#ccc' : '#C8102E'"
-        [style.cursor]="isLoading ? 'not-allowed' : 'pointer'"
+      <button type="submit" [disabled]="isLoading || disabled"
+        [style.background]="isLoading || disabled ? '#ccc' : '#C8102E'"
+        [style.cursor]="isLoading || disabled ? 'not-allowed' : 'pointer'"
         style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;color:#fff;border:none;font-size:12px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;">
         {{ submitLabel }}
         @if (!isLoading) {
@@ -65,5 +65,6 @@ export class OnbStepNav {
   @Input() onBack = false;
   @Input() submitLabel = 'Continuer';
   @Input() isLoading = false;
+  @Input() disabled = false;
   @Output() back = new EventEmitter<void>();
 }

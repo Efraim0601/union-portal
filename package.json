@@ -8,6 +8,7 @@
     "serve:shell": "ng serve shell",
     "serve:promote": "ng serve promote",
     "serve:diaspora": "ng serve diaspora",
+    "serve:diaspora-otp": "npm --prefix server/diaspora-otp start",
     "serve:all": "bash start-all.sh",
     "build": "ng build",
     "build:all": "ng build shell && ng build promote && ng build diaspora"

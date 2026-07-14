@@ -1,0 +1,124 @@
+import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { OnbFormField, OnbInput } from '../../ui/form-field';
+import { OnbSectionCard, OnbStepNav } from '../../ui/section-card';
+import { DiasporaApi } from '../../core/diaspora-api.service';
+import { ApplicationCreate } from '../../core/application.model';
+
+const RESEND_COOLDOWN_S = 60;
+
+/** Étape 1 du parcours AFB : vérification du numéro WhatsApp par code OTP (Callbell côté backend). */
+@Component({
+  selector: 'diaspora-otp-step',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [OnbSectionCard, OnbStepNav, OnbFormField, OnbInput],
+  template: `
+    <onb-section-card [section]="2" title="Vérification WhatsApp" [subtitle]="'Code envoyé à ' + phone">
+      <form (submit)="onSubmit($event)" style="display:grid;gap:16px;">
+        @if (!sent()) {
+          <p style="font-size:13px;color:#6B7280;margin:0;">
+            Un code à 6 chiffres va être envoyé par WhatsApp au numéro renseigné à l'étape précédente.
+          </p>
+        } @else {
+          <onb-form-field label="Code reçu" required>
+            <input onbInput type="text" inputmode="numeric" maxlength="6" placeholder="123456"
+                   [value]="code()" (input)="code.set($any($event.target).value)" />
+          </onb-form-field>
+        }
+
+        @if (error()) { <p style="font-size:12px;color:#C8102E;margin:0;">{{ error() }}</p> }
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+          <button type="button" (click)="sendOtp()" [disabled]="sending() || cooldown() > 0"
+            style="padding:10px 18px;border-radius:8px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;font-size:12.5px;font-weight:600;cursor:pointer;"
+            [style.opacity]="cooldown() > 0 ? 0.6 : 1">
+            {{ !sent() ? 'Envoyer le code' : (cooldown() > 0 ? 'Renvoyer (' + cooldown() + 's)' : 'Renvoyer le code') }}
+          </button>
+        </div>
+
+        <onb-step-nav [onBack]="true" (back)="back.emit()" submitLabel="Vérifier" [isLoading]="verifying()" />
+      </form>
+    </onb-section-card>
+  `,
+})
+export class DiasporaOtpStep implements OnInit, OnDestroy {
+  private api = inject(DiasporaApi);
+
+  @Input() phone = '';
+  @Input() model: Partial<ApplicationCreate> = {};
+  @Output() modelChange = new EventEmitter<Partial<ApplicationCreate>>();
+  @Output() verified = new EventEmitter<void>();
+  @Output() back = new EventEmitter<void>();
+
+  sent = signal(false);
+  sending = signal(false);
+  verifying = signal(false);
+  code = signal('');
+  error = signal<string | null>(null);
+  cooldown = signal(0);
+  private cooldownTimer: ReturnType<typeof setInterval> | null = null;
+
+  ngOnInit(): void {
+    this.sendOtp();
+  }
+
+  sendOtp(): void {
+    if (this.sending() || this.cooldown() > 0) return;
+    this.sending.set(true);
+    this.error.set(null);
+    this.api.sendWhatsappOtp(this.phone).subscribe({
+      next: (res) => {
+        this.sending.set(false);
+        this.sent.set(true);
+        if (res?.pre_onboarding_session_id) {
+          this.modelChange.emit({ ...this.model, pre_onboarding_session_id: res.pre_onboarding_session_id });
+        }
+        this.startCooldown();
+      },
+      error: () => {
+        this.sending.set(false);
+        this.sent.set(true);
+        this.error.set("Échec de l'envoi du code. Vérifiez votre connexion puis réessayez.");
+        this.startCooldown();
+      },
+    });
+  }
+
+  private startCooldown(): void {
+    this.cooldown.set(RESEND_COOLDOWN_S);
+    if (this.cooldownTimer) clearInterval(this.cooldownTimer);
+    this.cooldownTimer = setInterval(() => {
+      this.cooldown.update((v) => {
+        if (v <= 1 && this.cooldownTimer) { clearInterval(this.cooldownTimer); this.cooldownTimer = null; }
+        return Math.max(0, v - 1);
+      });
+    }, 1000);
+  }
+
+  onSubmit(e: Event): void {
+    e.preventDefault();
+    if (this.code().length !== 6) { this.error.set('Saisissez le code à 6 chiffres.'); return; }
+    this.verifying.set(true);
+    this.error.set(null);
+    this.api.verifyWhatsappOtp(this.phone, this.code()).subscribe({
+      next: (res) => {
+        this.verifying.set(false);
+        this.modelChange.emit({
+          ...this.model,
+          pre_onboarding_session_id: res?.pre_onboarding_session_id ?? this.model.pre_onboarding_session_id,
+          whatsapp_otp_verified: true,
+          whatsapp_otp_verified_at: new Date().toISOString(),
+        });
+        this.verified.emit();
+      },
+      error: () => {
+        this.verifying.set(false);
+        this.error.set('Code invalide ou service indisponible. Réessayez.');
+      },
+    });
+  }
+
+  ngOnDestroy(): void {
+    if (this.cooldownTimer) clearInterval(this.cooldownTimer);
+  }
+}

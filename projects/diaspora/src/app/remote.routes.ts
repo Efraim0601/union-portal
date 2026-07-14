@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes as diasporaRoutes } from './app.routes';
+import { mockApiInterceptor } from './core/mock-api.interceptor';
 
 /**
  * Routes exposées au HOST via Native Federation ('./Routes').
@@ -10,7 +11,7 @@ import { routes as diasporaRoutes } from './app.routes';
 export const routes: Routes = [
   {
     path: '',
-    providers: [provideHttpClient()],
+    providers: [provideHttpClient(withInterceptors([mockApiInterceptor]))],
     children: diasporaRoutes,
   },
 ];

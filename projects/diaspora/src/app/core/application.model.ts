@@ -10,6 +10,11 @@ export interface ApplicationCreate {
   whatsapp_otp_verified?: boolean | null;
   whatsapp_otp_verified_at?: string | null;
 
+  /** Particulier vs entreprise — distinct de account_type (Courant/Épargne). */
+  client_type?: 'PARTICULIER' | 'ENTREPRISE' | null;
+  /** Type de pièce présentée, fixé par l'étape de capture de documents (dérivé de la résidence/CEMAC). */
+  identity_document_type?: 'CNI' | 'PASSEPORT' | 'CARTE_SEJOUR' | 'CARTE_CONSULAIRE' | null;
+
   last_name: string;
   first_name: string;
   birth_date?: string | null;
@@ -29,7 +34,9 @@ export interface ApplicationCreate {
   contact_person_2_phone?: string | null;
 
   father_name?: string | null;
+  father_phone?: string | null;
   mother_name?: string | null;
+  mother_phone?: string | null;
 
   nationality?: string | null;
   residence?: string | null;
@@ -42,7 +49,9 @@ export interface ApplicationCreate {
   identity_document_issue_date?: string | null;
   identity_document_issue_place?: string | null;
 
+  profession?: string | null;
   rib?: string | null;
+  income_type?: string | null;
   income_range?: string | null;
   income_currency?: string | null;
   activity_sector?: string | null;
@@ -58,6 +67,7 @@ export interface ApplicationCreate {
   funds_origin_other?: string | null;
 
   account_type?: string | null;
+  account_currency?: string | null;
   preferred_branch?: string | null;
 
   selected_package_code?: string | null;
@@ -71,6 +81,8 @@ export interface ApplicationCreate {
 
   is_pep: boolean;
   pep_details?: string | null;
+
+  consent_accepted?: boolean | null;
 }
 
 export interface ApplicationResponse extends Omit<ApplicationCreate, 'is_pep'> {
@@ -84,3 +96,23 @@ export interface Country { code: string; name: string; dial_code?: string; }
 export interface Nationality { code: string; name: string; }
 export interface Subsector { code: string; name: string; sector_code?: string; }
 export interface Agency { code: string; name: string; city?: string; }
+
+/**
+ * Listes paramétrables via l'interface admin (secteurs, tranches de revenu, types de revenu,
+ * origine des fonds, objet du compte) — endpoints /api/lookups/{kind}, cf. LookupKind.
+ */
+export interface LookupOption { code: string; name: string; }
+export type LookupKind = 'sectors' | 'income-ranges' | 'income-types' | 'funds-origins' | 'account-objects';
+
+/** Formule de compte (Budget/Business/Eco…) — paramétrable via l'interface admin (/api/lookups/packages). */
+export interface PackageOffer {
+  code: string;
+  name: string;
+  tagline?: string | null;
+  currency: string;
+  opening_fee: number;
+  subscription_fee: number;
+  monthly_fee: number;
+  payment_required: boolean;
+  features: string[];
+}

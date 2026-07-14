@@ -5,7 +5,8 @@
     "packageManager": "npm",
     "schematicCollections": [
       "@schematics/angular"
-    ]
+    ],
+    "analytics": false
   },
   "newProjectRoot": "projects",
   "schematics": {
@@ -260,7 +261,10 @@
           "defaultConfiguration": "development",
           "options": {
             "port": 4201,
-            "proxyConfig": "projects/promote/proxy.conf.js"
+            "proxyConfig": "projects/promote/proxy.conf.js",
+            "headers": {
+              "Access-Control-Allow-Origin": "*"
+            }
           }
         }
       }
@@ -384,7 +388,10 @@
           "defaultConfiguration": "development",
           "options": {
             "port": 4202,
-            "proxyConfig": "projects/diaspora/proxy.conf.json"
+            "proxyConfig": "projects/diaspora/proxy.conf.json",
+            "headers": {
+              "Access-Control-Allow-Origin": "*"
+            }
           }
         }
       }

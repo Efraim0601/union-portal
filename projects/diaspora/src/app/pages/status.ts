@@ -1,21 +1,22 @@
 import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { JsonPipe } from '@angular/common';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { OnbSectionCard } from '../ui/section-card';
 import { OnbFormField, OnbInput } from '../ui/form-field';
 import { DiasporaApi } from '../core/diaspora-api.service';
+import { siblingUrl } from '../core/nav';
 
 /** Suivi de dossier — visuel digital-onboarding (beige, serif, rouge). */
 @Component({
   selector: 'diaspora-status',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [JsonPipe, RouterLink, OnbSectionCard, OnbFormField, OnbInput],
+  imports: [JsonPipe, OnbSectionCard, OnbFormField, OnbInput],
   template: `
     <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;">
       <header style="border-bottom:1px solid rgba(20,20,30,0.10);">
         <div style="max-width:640px;margin:0 auto;padding:16px 20px;">
-          <a routerLink="/home" style="text-decoration:none;display:flex;align-items:center;gap:10px;">
+          <a (click)="goHome($event)" style="cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:10px;">
             <span style="display:inline-flex;width:30px;height:30px;border-radius:7px;background:#C8102E;color:#fff;align-items:center;justify-content:center;font-weight:700;">A</span>
             <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#151821;">Compte Diaspora</span>
           </a>
@@ -46,10 +47,16 @@ import { DiasporaApi } from '../core/diaspora-api.service';
 export class DiasporaStatusPage {
   private api = inject(DiasporaApi);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   reference = this.route.snapshot.queryParamMap.get('reference') ?? '';
   readonly loading = signal(false);
   readonly result = signal<unknown>(null);
   readonly error = signal<string | null>(null);
+
+  goHome(e: Event): void {
+    e.preventDefault();
+    this.router.navigateByUrl(siblingUrl(this.router, '/status', '/home'));
+  }
 
   lookup(): void {
     if (!this.reference) return;

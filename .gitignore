@@ -1,10 +1,16 @@
 # Dépendances & sorties de build
 /node_modules
+node_modules/
 /dist
 /out-tsc
 /.angular
 /tmp
 /bazel-out
+
+# server/diaspora-ocr (Python)
+.venv/
+__pycache__/
+*.pyc
 
 # Tests / couverture
 /coverage

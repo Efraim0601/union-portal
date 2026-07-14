@@ -1,0 +1,15 @@
+{
+  "name": "diaspora-otp-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Petit backend local : envoi/vérification de l'OTP WhatsApp (Callbell) pour le parcours diaspora. Garde la clé API côté serveur (jamais exposée au frontend Angular).",
+  "scripts": {
+    "start": "node --env-file=.env index.js",
+    "dev": "node --env-file=.env --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "http-proxy-middleware": "^4.2.0"
+  }
+}
