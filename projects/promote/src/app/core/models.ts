@@ -118,7 +118,7 @@ export interface ConfigDto {
   rechargeInitialeBancaire: number;
   passPremiumBancaire: number;
 }
-// ---- integration settings (SMTP + TrustPayWay) ----
+// ---- integration settings (SMTP + Payment Hub) ----
 export interface SmtpSettingsDto {
   enabled: boolean | null; host: string | null; port: number | null; username: string | null;
   from: string | null; fromName: string | null; publicUrl: string | null; passwordSet: boolean;
@@ -127,14 +127,16 @@ export interface SmtpSettingsUpdate {
   enabled: boolean | null; host: string | null; port: number | null; username: string | null;
   password: string | null; from: string | null; fromName: string | null; publicUrl: string | null;
 }
-export interface TrustPayWaySettingsDto {
-  baseUrl: string | null; applicationId: string | null; notifUrl: string | null;
+/** Connexion au Payment Hub, qui porte les identifiants des opérateurs (TrustPayWay, carte…) :
+ *  le portail ne connaît que l'adresse du Hub et ses propres clés. Les secrets ne sont jamais
+ *  renvoyés par l'API — les drapeaux `*Set` disent seulement s'ils sont configurés. */
+export interface PayHubSettingsDto {
+  baseUrl: string | null;
   connectTimeoutMs: number | null; readTimeoutMs: number | null; statusReadTimeoutMs: number | null;
-  secretKeySet: boolean; webhookSecretSet: boolean;
+  apiKeySet: boolean; webhookSecretSet: boolean;
 }
-export interface TrustPayWaySettingsUpdate {
-  baseUrl: string | null; secretKey: string | null; applicationId: string | null;
-  notifUrl: string | null; webhookSecret: string | null;
+export interface PayHubSettingsUpdate {
+  baseUrl: string | null; apiKey: string | null; webhookSecret: string | null;
   connectTimeoutMs: number | null; readTimeoutMs: number | null; statusReadTimeoutMs: number | null;
 }
 export interface TestResult { ok: boolean; message: string; }

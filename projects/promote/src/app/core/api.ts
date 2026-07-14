@@ -44,8 +44,8 @@ import {
   SmtpSettingsUpdate,
   SubscriptionDto,
   TestResult,
-  TrustPayWaySettingsDto,
-  TrustPayWaySettingsUpdate,
+  PayHubSettingsDto,
+  PayHubSettingsUpdate,
   User,
   UserDto,
 } from './models';
@@ -275,19 +275,19 @@ export class Api {
   testSmtp(to: string): Observable<TestResult> {
     return this.http.post<TestResult>(`${this.base}/settings/smtp/test`, { to });
   }
-  trustPayWaySettings(): Observable<TrustPayWaySettingsDto> {
-    return this.http.get<TrustPayWaySettingsDto>(`${this.base}/settings/trustpayway`);
+  payHubSettings(): Observable<PayHubSettingsDto> {
+    return this.http.get<PayHubSettingsDto>(`${this.base}/settings/payhub`);
   }
-  updateTrustPayWaySettings(req: TrustPayWaySettingsUpdate): Observable<TrustPayWaySettingsDto> {
-    return this.http.put<TrustPayWaySettingsDto>(`${this.base}/settings/trustpayway`, req);
+  updatePayHubSettings(req: PayHubSettingsUpdate): Observable<PayHubSettingsDto> {
+    return this.http.put<PayHubSettingsDto>(`${this.base}/settings/payhub`, req);
   }
-  testTrustPayWay(): Observable<TestResult> {
-    return this.http.post<TestResult>(`${this.base}/settings/trustpayway/test`, {});
+  testPayHub(): Observable<TestResult> {
+    return this.http.post<TestResult>(`${this.base}/settings/payhub/test`, {});
   }
-  /** Efface TOUS les identifiants/config TrustPayWay en base (secret compris, ce que le PUT ne
-   *  permet pas puisqu'un secret vide y est conservé). Scope TrustPayWay uniquement. */
-  resetTrustPayWaySettings(): Observable<TrustPayWaySettingsDto> {
-    return this.http.delete<TrustPayWaySettingsDto>(`${this.base}/settings/trustpayway/credentials`);
+  /** Efface TOUS les identifiants/config du Payment Hub en base (secrets compris, ce que le PUT ne
+   *  permet pas puisqu'un secret vide y est conservé). Scope Payment Hub uniquement. */
+  resetPayHubSettings(): Observable<PayHubSettingsDto> {
+    return this.http.delete<PayHubSettingsDto>(`${this.base}/settings/payhub/credentials`);
   }
   generalSettings(): Observable<GeneralSettingsDto> {
     return this.http.get<GeneralSettingsDto>(`${this.base}/settings/general`);

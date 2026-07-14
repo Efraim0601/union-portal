@@ -171,8 +171,8 @@ bash deploy/server/deploy.sh                        # clone les 3 repos + build 
   `DIASPORA_PORT`) ainsi que les URLs des dépôts et la branche.
 - **HTTPS** est indispensable pour la caméra (KYC) — accès `https://<serveur>:6443` (cert auto-signé) ;
   voir [HTTPS & caméra](#https--caméra-kyc).
-- **Paiement réel** : mettre `APP_PAYMENT_PROVIDER=trustpayway` + identifiants dans `promoteApp/.env` ;
-  voir [Paiement TrustPayWay](#paiement-mobile-money-trustpayway).
+- **Paiement réel** : mettre `APP_PAYMENT_PROVIDER=paymenthub` + identifiants dans `promoteApp/.env` ;
+  voir [Paiement Payment Hub](#paiement-mobile-money-payment-hub).
 - Le portail **proxifie** `/promote-api` → promote et `/api` → diaspora (même origine, pas de CORS).
   Les upstreams nginx sont **substitués au démarrage** (`PROMOTE_UPSTREAM`/`DIASPORA_UPSTREAM`,
   cf. `deploy/nginx.conf` en template envsubst) → une seule image pour tous les ports.
@@ -206,43 +206,64 @@ https://<serveur>:6443        # prod/test        (docker-compose local : https:/
 > domaine) — monter `union.crt`/`union.key` valides dans `/etc/nginx/ssl/` ou placer un reverse-proxy
 > TLS (Caddy/Traefik) devant le gateway. Le script auto-signé ne sert qu'au dev/test.
 
-## Paiement mobile money (TrustPayWay)
+## Paiement mobile money (Payment Hub)
 
-Le backend `promoteApp` intègre l'agrégateur **TrustPayWay** (Orange / MTN MoMo). Le parcours
-front (souscription & recharge) déclenche le paiement puis **suit le statut en temps réel**
-(polling de `…/status`) — plus aucun bouton de simulation.
+Le backend `promoteApp` ne parle plus directement aux opérateurs : il passe par le **Payment Hub**,
+un service d'orchestration séparé (dépôt `payment-hub`) qui porte les identifiants des PSP
+— TrustPayWay pour Orange / MTN MoMo, MPGS pour la carte. Le portail ne détient donc **aucun
+identifiant opérateur**, seulement une clé API vers le Hub.
+
+L'intégration est **serveur-à-serveur** : le parcours front (souscription & recharge) est inchangé
+— le client choisit son opérateur et saisit son numéro dans le portail, le Hub pousse le prompt
+USSD, et le front **suit le statut en temps réel** (polling de `…/status`).
+
+```
+promoteApp ──POST /api/v1/payments (X-Api-Key)──▶ Payment Hub ──▶ TrustPayWay ──▶ Orange/MTN
+           ◀── webhook signé HMAC (X-PayHub-Signature) ──┘
+           ──GET /api/v1/payments/{id} (statut, source de vérité)──▶
+```
 
 **Sélection de la passerelle** (`app.payment.provider`, lu **au démarrage**) :
 
 | Valeur | Effet |
 |---|---|
 | `simulated` (défaut) | passerelle factice — le paiement ne se règle que via `PATCH /subscriptions/{ref}/pay` (usage démo/staff). **Le suivi temps réel du front ne peut pas aboutir.** |
-| `trustpayway` | vraie passerelle : push USSD réel + webhook + `get-status` + réconciliation. |
+| `paymenthub` | vraie passerelle : push USSD réel via le Hub + webhook signé + statut + réconciliation. |
 
 Pour activer le **paiement réel** (backend `promoteApp/.env`, puis **recréer** le conteneur) :
 
 ```bash
-APP_PAYMENT_PROVIDER=trustpayway
-# Identifiants : soit ici en env, soit via l'UI Admin → Paramètres → TrustPayWay (stockés en
-# base, prioritaires sur l'env, pris en compte à chaud). Requis : base-url, secret-key, application-id.
-TRUSTPAYWAY_BASE_URL=https://api.trustpayway.com
-TRUSTPAYWAY_SECRET_KEY=…
-TRUSTPAYWAY_APPLICATION_ID=…
-TRUSTPAYWAY_NOTIF_URL=https://<domaine-public>/api/payment/webhook/trustpayway   # webhook joignable depuis Internet
+APP_PAYMENT_PROVIDER=paymenthub
+# Identifiants : soit ici en env, soit via l'UI Admin → Paramètres → Payment Hub (stockés en base,
+# prioritaires sur l'env, pris en compte à chaud). Les trois sont requis.
+PAYHUB_BASE_URL=https://pay.bbcomplex.com
+PAYHUB_API_KEY=phk_…             # clé API de l'application, délivrée par le Hub
+PAYHUB_WEBHOOK_SECRET=phwh_…     # secret de signature des notifications, délivré par le Hub
 ```
+
+**Côté Hub** (console d'administration, en-tête `X-Admin-Token`), il faut au préalable :
+1. créer l'application Promote → elle renvoie `apiKey` + `webhookSecret` (affichés **une seule fois**) ;
+2. renseigner son `webhook_url` : `https://<domaine-public>/api/payment/webhook/payhub` ;
+3. activer les moyens `orange` et `mtn` pour cette application ;
+4. configurer le provider `trustpayway` du Hub avec les identifiants opérateur (baseUrl, appId, secret).
 
 ```bash
 docker compose -f promoteApp/docker-compose.yml -f /opt/afriland/.promote-ports.yml \
   up -d --force-recreate backend
 
 # Vérifier la passerelle active :
-curl -s http://localhost:6390/api/payment/provider      # -> {"provider":"trustpayway"}
+curl -s http://localhost:6390/api/payment/provider      # -> {"provider":"paymenthub"}
 ```
 
-Puis **Admin → Paramètres → TrustPayWay → Tester la connexion** (fait un vrai `POST /api/login`).
+Puis **Admin → Paramètres → Payment Hub → Tester la connexion** (interroge le Hub avec la clé API et
+vérifie qu'au moins un moyen de paiement est activé pour l'application).
 ⚠️ Saisir les identifiants dans l'UI **ne suffit pas** à activer le paiement réel : le *provider*
 n'est pas en base et ne bascule que par `APP_PAYMENT_PROVIDER` **+ redémarrage**. La réconciliation
 automatique (`PAYMENT_RECONCILE=true`) rattrape les paiements dont le webhook n'arrive pas.
+
+> **Webhook** : la notification du Hub est signée en HMAC-SHA256 (`X-PayHub-Signature`) et la
+> vérification est **obligatoire** — sans secret configuré l'endpoint répond 503, avec une signature
+> invalide 403. C'est ce qui empêche un tiers de marquer une commande « payée ».
 
 ## Dépannage / pièges connus
 
@@ -263,7 +284,10 @@ automatique (`PAYMENT_RECONCILE=true`) rattrape les paiements dont le webhook n'
   `ALTER USER promote WITH PASSWORD '…'` (ou recréer le volume).
 - **Caméra qui reste en placeholder** : origine non-HTTPS — cf. [HTTPS & caméra](#https--caméra-kyc).
 - **Paiement bloqué « en cours » puis échec** : backend en `provider=simulated` — cf.
-  [Paiement TrustPayWay](#paiement-mobile-money-trustpayway).
+  [Paiement Payment Hub](#paiement-mobile-money-payment-hub).
+- **Paiement toujours « en cours » alors que le client a payé** : le webhook du Hub n'arrive pas
+  (URL injoignable depuis le Hub, ou secret désaccordé → 403). Vérifier le `webhook_url` déclaré
+  dans le Hub et `PAYHUB_WEBHOOK_SECRET`. La réconciliation finit par rattraper, mais avec délai.
 
 ## Notes / TODO
 

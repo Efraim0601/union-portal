@@ -7,7 +7,7 @@ import {
   ImportUsersResult, ImportAgencyRow, ImportAgenciesResult, LoginAuditDto, PaymentStats, ProfileDto,
   GeneralSettingsDto,
   SmtpSettingsDto, SmtpSettingsUpdate,
-  SubscriptionDto, TrustPayWaySettingsDto, TrustPayWaySettingsUpdate, UserDto,
+  PayHubSettingsDto, PayHubSettingsUpdate, SubscriptionDto, UserDto,
 } from '../core/models';
 import { StaffSidebar } from '../shared/staff-sidebar';
 import * as XLSX from 'xlsx';
@@ -451,29 +451,27 @@ const PAGE = 10;
               } @else { <div style="color:var(--muted);font-size:13px">Chargement…</div> }
             </div>
 
-            <!-- TrustPayWay -->
+            <!-- Payment Hub -->
             <div class="panel">
-              <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Passerelle de paiement (TrustPayWay)</div>
-              <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Connexion à l'agrégateur Mobile Money. Les clés secrètes ne sont jamais réaffichées ; laissez vide pour conserver la valeur en place.</div>
-              @if (tpw(); as t) {
+              <div style="font-size:14px;font-weight:700;color:var(--navy);margin-bottom:4px">Passerelle de paiement (Payment Hub)</div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Connexion au Payment Hub, qui porte les identifiants des opérateurs (Orange, MTN, carte). Les clés secrètes ne sont jamais réaffichées ; laissez vide pour conserver la valeur en place.</div>
+              @if (hub(); as h) {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-                  <div style="grid-column:1 / -1"><label class="lab">URL de base de l'API</label><input class="in" [value]="t.baseUrl || ''" (input)="patchTpw('baseUrl', val($event))" placeholder="https://api.trustpayway.com"></div>
-                  <div><label class="lab">Application ID</label><input class="in" [value]="t.applicationId || ''" (input)="patchTpw('applicationId', val($event))" autocomplete="off"></div>
-                  <div><label class="lab">Clé secrète {{ t.secretKeySet ? '(définie ✓)' : '' }}</label><input class="in" type="password" [value]="tpwSecret()" (input)="tpwSecret.set(val($event))" placeholder="•••••• (laisser vide pour conserver)" autocomplete="new-password"></div>
-                  <div style="grid-column:1 / -1"><label class="lab">URL de notification (webhook)</label><input class="in" [value]="t.notifUrl || ''" (input)="patchTpw('notifUrl', val($event))" placeholder="https://…/api/payment/webhook/trustpayway"></div>
-                  <div><label class="lab">Secret webhook {{ t.webhookSecretSet ? '(défini ✓)' : '' }}</label><input class="in" type="password" [value]="tpwWebhook()" (input)="tpwWebhook.set(val($event))" placeholder="•••••• (optionnel)" autocomplete="new-password"></div>
-                  <div><label class="lab">Timeout connexion (ms)</label><input class="in" type="number" [value]="t.connectTimeoutMs ?? ''" (input)="patchTpw('connectTimeoutMs', val($event))" placeholder="5000"></div>
-                  <div><label class="lab">Timeout push (ms)</label><input class="in" type="number" [value]="t.readTimeoutMs ?? ''" (input)="patchTpw('readTimeoutMs', val($event))" placeholder="45000"></div>
-                  <div><label class="lab">Timeout statut (ms)</label><input class="in" type="number" [value]="t.statusReadTimeoutMs ?? ''" (input)="patchTpw('statusReadTimeoutMs', val($event))" placeholder="12000"></div>
+                  <div style="grid-column:1 / -1"><label class="lab">URL de base du Hub</label><input class="in" [value]="h.baseUrl || ''" (input)="patchHub('baseUrl', val($event))" placeholder="https://pay.bbcomplex.com"></div>
+                  <div><label class="lab">Clé API {{ h.apiKeySet ? '(définie ✓)' : '' }}</label><input class="in" type="password" [value]="hubApiKey()" (input)="hubApiKey.set(val($event))" placeholder="phk_… (laisser vide pour conserver)" autocomplete="new-password"></div>
+                  <div><label class="lab">Secret webhook {{ h.webhookSecretSet ? '(défini ✓)' : '' }}</label><input class="in" type="password" [value]="hubWebhook()" (input)="hubWebhook.set(val($event))" placeholder="phwh_… (laisser vide pour conserver)" autocomplete="new-password"></div>
+                  <div><label class="lab">Timeout connexion (ms)</label><input class="in" type="number" [value]="h.connectTimeoutMs ?? ''" (input)="patchHub('connectTimeoutMs', val($event))" placeholder="5000"></div>
+                  <div><label class="lab">Timeout push (ms)</label><input class="in" type="number" [value]="h.readTimeoutMs ?? ''" (input)="patchHub('readTimeoutMs', val($event))" placeholder="45000"></div>
+                  <div><label class="lab">Timeout statut (ms)</label><input class="in" type="number" [value]="h.statusReadTimeoutMs ?? ''" (input)="patchHub('statusReadTimeoutMs', val($event))" placeholder="12000"></div>
                 </div>
-                @if (tpwMsg()) { <div class="alert-success" style="margin-bottom:10px">✓ {{ tpwMsg() }}</div> }
-                @if (tpwErr()) { <div class="alert-error" style="margin-bottom:10px">{{ tpwErr() }}</div> }
+                @if (hubMsg()) { <div class="alert-success" style="margin-bottom:10px">✓ {{ hubMsg() }}</div> }
+                @if (hubErr()) { <div class="alert-error" style="margin-bottom:10px">{{ hubErr() }}</div> }
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                  <button (click)="saveTpw()" [disabled]="tpwBusy()" class="btn btn-primary" style="width:auto;padding:10px 18px;border-radius:10px">Enregistrer</button>
-                  <button (click)="doTestTpw()" [disabled]="tpwBusy()" class="btn-soft" style="border-radius:10px">{{ tpwBusy() ? '…' : 'Tester la connexion' }}</button>
-                  <button (click)="resetTpw()" [disabled]="tpwBusy()" class="btn-soft" style="border-radius:10px;margin-left:auto;color:#DC2626;border-color:#FCA5A5" title="Efface tous les identifiants TrustPayWay en base">Réinitialiser les identifiants</button>
+                  <button (click)="saveHub()" [disabled]="hubBusy()" class="btn btn-primary" style="width:auto;padding:10px 18px;border-radius:10px">Enregistrer</button>
+                  <button (click)="doTestHub()" [disabled]="hubBusy()" class="btn-soft" style="border-radius:10px">{{ hubBusy() ? '…' : 'Tester la connexion' }}</button>
+                  <button (click)="resetHub()" [disabled]="hubBusy()" class="btn-soft" style="border-radius:10px;margin-left:auto;color:#DC2626;border-color:#FCA5A5" title="Efface tous les identifiants Payment Hub en base">Réinitialiser les identifiants</button>
                 </div>
-                <div style="font-size:11px;color:var(--muted-2);margin-top:10px">Note : l'activation de la passerelle (provider) reste pilotée par la variable d'environnement et nécessite un redémarrage. Cet écran configure la connexion.</div>
+                <div style="font-size:11px;color:var(--muted-2);margin-top:10px">Notes : l'activation de la passerelle (provider) reste pilotée par la variable d'environnement et nécessite un redémarrage. L'URL de notification, les moyens de paiement activés et les identifiants opérateurs se règlent <b>côté Hub</b> (console → Applications), pas ici.</div>
               } @else { <div style="color:var(--muted);font-size:13px">Chargement…</div> }
             </div>
           </div>
@@ -606,9 +604,9 @@ export class AdminPage {
   generalMsg = signal(''); generalErr = signal(''); generalBusy = signal(false);
   smtp = signal<SmtpSettingsDto | null>(null);
   smtpPassword = signal(''); smtpMsg = signal(''); smtpErr = signal(''); smtpBusy = signal(false);
-  tpw = signal<TrustPayWaySettingsDto | null>(null);
-  tpwSecret = signal(''); tpwWebhook = signal('');
-  tpwMsg = signal(''); tpwErr = signal(''); tpwBusy = signal(false);
+  hub = signal<PayHubSettingsDto | null>(null);
+  hubApiKey = signal(''); hubWebhook = signal('');
+  hubMsg = signal(''); hubErr = signal(''); hubBusy = signal(false);
 
   constructor() {
     this.api.adminStats().subscribe({ next: (s) => this.stats.set(s), error: () => {} });
@@ -1017,11 +1015,11 @@ export class AdminPage {
     else this.api.auditActions().subscribe({ next: (l) => this.actions.set(l), error: () => {} });
   }
 
-  // ---- settings (general + SMTP + TrustPayWay) ----
+  // ---- settings (general + SMTP + Payment Hub) ----
   loadSettings() {
     this.api.generalSettings().subscribe({ next: (g) => this.general.set(g), error: () => {} });
     this.api.smtpSettings().subscribe({ next: (s) => this.smtp.set(s), error: () => {} });
-    this.api.trustPayWaySettings().subscribe({ next: (t) => this.tpw.set(t), error: () => {} });
+    this.api.payHubSettings().subscribe({ next: (h) => this.hub.set(h), error: () => {} });
   }
   patchGeneral(value: string) {
     const g = this.general(); if (!g) return;
@@ -1044,11 +1042,11 @@ export class AdminPage {
     const s = this.smtp(); if (!s) return;
     this.smtp.set({ ...s, [key]: value });
   }
-  patchTpw(key: keyof TrustPayWaySettingsDto, value: string) {
-    const t = this.tpw(); if (!t) return;
+  patchHub(key: keyof PayHubSettingsDto, value: string) {
+    const h = this.hub(); if (!h) return;
     const numeric = key === 'connectTimeoutMs' || key === 'readTimeoutMs' || key === 'statusReadTimeoutMs';
     const v: unknown = numeric ? (value ? Number(value) : null) : (value || null);
-    this.tpw.set({ ...t, [key]: v });
+    this.hub.set({ ...h, [key]: v });
   }
   saveSmtp() {
     const s = this.smtp(); if (!s) return;
@@ -1069,34 +1067,33 @@ export class AdminPage {
       error: (e) => { this.smtpBusy.set(false); this.smtpErr.set(e?.error?.message || 'Erreur'); },
     });
   }
-  saveTpw() {
-    const t = this.tpw(); if (!t) return;
-    this.tpwBusy.set(true); this.tpwMsg.set(''); this.tpwErr.set('');
-    const req: TrustPayWaySettingsUpdate = {
-      baseUrl: t.baseUrl, secretKey: this.tpwSecret() || null, applicationId: t.applicationId,
-      notifUrl: t.notifUrl, webhookSecret: this.tpwWebhook() || null,
-      connectTimeoutMs: t.connectTimeoutMs, readTimeoutMs: t.readTimeoutMs, statusReadTimeoutMs: t.statusReadTimeoutMs,
+  saveHub() {
+    const h = this.hub(); if (!h) return;
+    this.hubBusy.set(true); this.hubMsg.set(''); this.hubErr.set('');
+    const req: PayHubSettingsUpdate = {
+      baseUrl: h.baseUrl, apiKey: this.hubApiKey() || null, webhookSecret: this.hubWebhook() || null,
+      connectTimeoutMs: h.connectTimeoutMs, readTimeoutMs: h.readTimeoutMs, statusReadTimeoutMs: h.statusReadTimeoutMs,
     };
-    this.api.updateTrustPayWaySettings(req).subscribe({
-      next: (r) => { this.tpw.set(r); this.tpwSecret.set(''); this.tpwWebhook.set(''); this.tpwBusy.set(false); this.tpwMsg.set('Paramètres TrustPayWay enregistrés'); },
-      error: (e) => { this.tpwBusy.set(false); this.tpwErr.set(e?.error?.error || e?.error?.message || 'Erreur'); },
+    this.api.updatePayHubSettings(req).subscribe({
+      next: (r) => { this.hub.set(r); this.hubApiKey.set(''); this.hubWebhook.set(''); this.hubBusy.set(false); this.hubMsg.set('Paramètres Payment Hub enregistrés'); },
+      error: (e) => { this.hubBusy.set(false); this.hubErr.set(e?.error?.error || e?.error?.message || 'Erreur'); },
     });
   }
-  doTestTpw() {
-    this.tpwBusy.set(true); this.tpwMsg.set(''); this.tpwErr.set('');
-    this.api.testTrustPayWay().subscribe({
-      next: (r) => { this.tpwBusy.set(false); if (r.ok) this.tpwMsg.set(r.message); else this.tpwErr.set(r.message); },
-      error: (e) => { this.tpwBusy.set(false); this.tpwErr.set(e?.error?.message || 'Erreur'); },
+  doTestHub() {
+    this.hubBusy.set(true); this.hubMsg.set(''); this.hubErr.set('');
+    this.api.testPayHub().subscribe({
+      next: (r) => { this.hubBusy.set(false); if (r.ok) this.hubMsg.set(r.message); else this.hubErr.set(r.message); },
+      error: (e) => { this.hubBusy.set(false); this.hubErr.set(e?.error?.message || 'Erreur'); },
     });
   }
-  /** Efface tous les identifiants TrustPayWay en base (URL, App ID, clé secrète, secret webhook,
-   *  timeouts). Action destructive → confirmation. Les paiements MoMo sont coupés jusqu'à reconfig. */
-  resetTpw() {
-    if (!confirm('Effacer TOUS les identifiants TrustPayWay en base (URL, Application ID, clé secrète, secret webhook, timeouts) ?\n\nLes paiements Mobile Money seront désactivés jusqu\'à une nouvelle configuration.')) return;
-    this.tpwBusy.set(true); this.tpwMsg.set(''); this.tpwErr.set('');
-    this.api.resetTrustPayWaySettings().subscribe({
-      next: (r) => { this.tpw.set(r); this.tpwSecret.set(''); this.tpwWebhook.set(''); this.tpwBusy.set(false); this.tpwMsg.set('Identifiants TrustPayWay réinitialisés (base vidée)'); },
-      error: (e) => { this.tpwBusy.set(false); this.tpwErr.set(e?.error?.error || e?.error?.message || 'Erreur'); },
+  /** Efface tous les identifiants Payment Hub en base (URL, clé API, secret webhook, timeouts).
+   *  Action destructive → confirmation. Les paiements MoMo sont coupés jusqu'à reconfiguration. */
+  resetHub() {
+    if (!confirm('Effacer TOUS les identifiants Payment Hub en base (URL, clé API, secret webhook, timeouts) ?\n\nLes paiements Mobile Money seront désactivés jusqu\'à une nouvelle configuration.')) return;
+    this.hubBusy.set(true); this.hubMsg.set(''); this.hubErr.set('');
+    this.api.resetPayHubSettings().subscribe({
+      next: (r) => { this.hub.set(r); this.hubApiKey.set(''); this.hubWebhook.set(''); this.hubBusy.set(false); this.hubMsg.set('Identifiants Payment Hub réinitialisés (base vidée)'); },
+      error: (e) => { this.hubBusy.set(false); this.hubErr.set(e?.error?.error || e?.error?.message || 'Erreur'); },
     });
   }
 }
