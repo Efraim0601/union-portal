@@ -162,17 +162,21 @@ export class RechargePage implements OnDestroy {
     return parseInt(this.amount().replace(/\D/g, ''), 10) || 0;
   }
 
-  /** Bornes du montant rechargeable (paramétrage backend ; valeurs de repli si /config échoue). */
-  private amountRange(): { min: number; max: number } {
+  /** Bornes du montant rechargeable, ou null tant que /config n'a pas répondu : on ne prétend
+   *  alors aucune borne (le backend garde les siennes) plutôt que d'en inventer d'absurdes. */
+  private amountRange(): { min: number; max: number } | null {
     const c = this.config();
-    return { min: c?.rechargeMin ?? 0, max: c?.rechargeMax ?? Number.MAX_SAFE_INTEGER };
+    return c ? { min: c.rechargeMin, max: c.rechargeMax } : null;
   }
 
   /** Traduit les codes d'erreur du backend en messages lisibles. */
   private createError(code?: string): string {
-    const { min, max } = this.amountRange();
+    const r = this.amountRange();
     return ({
-      amount_out_of_range: this.i18n.t('err_amount_range', { min: fcfa(min), max: fcfa(max) }),
+      // Bornes inconnues (config indisponible) : message générique plutôt qu'un intervalle inventé.
+      amount_out_of_range: r
+        ? this.i18n.t('err_amount_range', { min: fcfa(r.min), max: fcfa(r.max) })
+        : this.i18n.t('err_amount_invalid'),
       invalid_pan: this.i18n.t('err_invalid_pan'),
       pay_phone_required: this.i18n.t('err_momo_phone'),
       invalid_pay_method: this.i18n.t('err_pay_method'),
@@ -185,9 +189,9 @@ export class RechargePage implements OnDestroy {
     if (!this.firstName() || !this.lastName() || !this.phone() || !this.pan1() || !this.pan2() || !this.amountNum()) {
       this.error.set(this.i18n.t('err_required_fields')); return;
     }
-    const { min, max } = this.amountRange();
-    if (this.amountNum() < min || this.amountNum() > max) {
-      this.error.set(this.i18n.t('err_amount_range', { min: fcfa(min), max: fcfa(max) })); return;
+    const range = this.amountRange();
+    if (range && (this.amountNum() < range.min || this.amountNum() > range.max)) {
+      this.error.set(this.i18n.t('err_amount_range', { min: fcfa(range.min), max: fcfa(range.max) })); return;
     }
     if (!this.payMethod()) { this.error.set(this.i18n.t('err_pay_method')); return; }
     if ((this.payMethod() === 'om' || this.payMethod() === 'mtn') && !this.momoPhone()) {

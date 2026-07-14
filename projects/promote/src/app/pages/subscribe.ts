@@ -143,7 +143,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
                           <div class="pkg-body fade-in">
                             @if (p.description) { <div class="pkg-desc">{{ p.description }}</div> }
                             <div class="pkg-h">{{ i18n.t('pkg_contents') }}</div>
-                            @for (c of packageItems(p); track c.ckey + c.label) {
+                            @for (c of packageItems(p); track $index) {
                               <div class="pkg-row">
                                 <span class="pkg-l">
                                   <svg width="13" height="13" fill="none" stroke="#059669" stroke-width="3" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M20 6L9 17l-5-5"></path></svg>
@@ -417,7 +417,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
                 @if (selectedPackageItems().length) {
                   <div class="sum-card">
                     <div class="sum-h"><svg width="16" height="16" fill="none" stroke="#C8102E" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"></path></svg>{{ i18n.t('summary_package') }} — {{ selected()?.label }}</div>
-                    @for (c of selectedPackageItems(); track c.ckey + c.label) {
+                    @for (c of selectedPackageItems(); track $index) {
                       <div class="sum-row">
                         <span class="sum-k">{{ c.label }}</span>
                         <span class="sum-v" [class.pkg-inc]="c.amount <= 0">{{ c.amount > 0 ? price(c.amount) : i18n.t('pkg_included') }}</span>
@@ -676,11 +676,22 @@ export class SubscribePage implements OnDestroy {
     return p ? (this.packageItemsById().get(p.id) ?? []) : [];
   });
 
-  total = computed(() => {
-    const base = this.selected()?.effectivePrice ?? 0;
-    const t = this.delivery() === 'home' ? (this.config()?.transport ?? 0) : 0;
-    return base + t;
+  /**
+   * Tarif du produit sélectionné, calqué sur `SubscriptionService.total()` : le client règle le
+   * prix du produit (promo comprise) + le transport si livraison à domicile — rien d'autre. Le
+   * transport peut être surchargé par un composant `transport` du produit, comme côté backend
+   * (`configForProduct`). Toute divergence ici se traduirait par un débit ≠ du montant affiché.
+   */
+  private tariff = computed(() => {
+    const p = this.selected();
+    const override = (p?.components ?? []).find((c) => c.ckey === 'transport')?.amount;
+    return {
+      price: p?.effectivePrice ?? 0,
+      transport: this.delivery() === 'home' ? (override ?? this.config()?.transport ?? 0) : 0,
+    };
   });
+
+  total = computed(() => this.tariff().price + this.tariff().transport);
 
   personalRows = computed(() => [
     { label: this.i18n.t('field_firstname'), value: this.firstName() },
@@ -690,9 +701,11 @@ export class SubscribePage implements OnDestroy {
     { label: this.i18n.t('field_email'), value: this.email() },
     { label: this.i18n.t('field_city'), value: this.city() },
   ]);
+  /** Détail du montant réellement débité — une ligne par composante non nulle. */
   tariffRows = computed(() => {
-    const rows = [{ label: this.selected()?.label ?? '', value: this.price(this.selected()?.effectivePrice ?? 0) }];
-    if (this.delivery() === 'home') rows.push({ label: this.i18n.t('delivery_home'), value: this.price(this.config()?.transport ?? 0) });
+    const t = this.tariff();
+    const rows = [{ label: this.selected()?.label ?? '', value: this.price(t.price) }];
+    if (t.transport > 0) rows.push({ label: this.i18n.t('delivery_home'), value: this.price(t.transport) });
     return rows;
   });
 
@@ -1056,6 +1069,10 @@ export class SubscribePage implements OnDestroy {
 
   copyRef() { navigator.clipboard?.writeText(this.createdRef()); }
   restart() { this.stopPolling(); window.location.reload(); }
-  retry() { this.stopPolling(); this.phase.set('funnel'); this.step.set(4); }
+  retry() {
+    this.stopPolling();
+    this.error.set(''); this.failureMsg.set('');
+    this.phase.set('funnel'); this.step.set(4);
+  }
   goHome() { this.stopPolling(); this.goToHome(); }
 }
