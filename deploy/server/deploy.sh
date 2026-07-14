@@ -1,153 +1,256 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Déploiement serveur (Ubuntu) du portail unifié Afriland.
+# DÉPLOIEMENT CENTRALISÉ DE LA SOLUTION UNION
 #
-# Récupère les 3 dépôts GitHub, puis déploie tout le système en conteneurs,
-# avec des ports hôte dans la plage 6000-7000 :
-#   • Portail unifié (nginx + 3 fronts)   -> http://SERVEUR:${UNION_PORT}
-#   • Backend promote (Spring Boot + DB)  -> :${PROMOTE_PORT}
-#   • Backend diaspora (FastAPI)          -> :${DIASPORA_PORT}
+# Point d'entrée UNIQUE : ce script déploie toute la solution, pilotée par le
+# manifeste `deploy/server/components.env` (dépôt, branche, chemin, port,
+# service compose de chaque composant).
 #
-# Le portail (nginx) proxifie /promote-api -> promote et /api -> diaspora en
-# même origine (pas de CORS). Les upstreams pointent vers les ports hôte via
-# host.docker.internal (envsubst du template nginx au démarrage).
+#   Portail union  (Angular + nginx : shell + promote + diaspora, 1 origine)
+#   Backend promote (Spring Boot)      proxifié en /promote-api/*
+#   Backend diaspora (FastAPI)         proxifié en /api/*
+#   Payment Hub    (encaissement, mutualisé avec les autres applications)
+#
+# Pour chaque composant : git sync -> build image -> conteneur recréé sur la
+# NOUVELLE image -> contrôle de santé.
 #
 # Usage :
-#   # 1) config (optionnel — sinon valeurs par défaut) :
-#   cp deploy/server/.env.example deploy/server/.env && nano deploy/server/.env
-#   # 2) déploiement :
-#   bash deploy/server/deploy.sh
+#   bash deploy/server/deploy.sh                 # tout (ordre du manifeste)
+#   bash deploy/server/deploy.sh promote union   # seulement ces composants
+#   bash deploy/server/deploy.sh --no-sync       # sans git (déploie le code local)
+#   bash deploy/server/deploy.sh --check         # ne déploie rien : état + santé
 #
-# Prérequis serveur : docker, docker compose (plugin), git, curl.
+# Config locale (secrets, ports) : deploy/server/.env — chargé après le
+# manifeste, il gagne. Prérequis : docker, docker compose, git, curl.
 # ============================================================================
 set -euo pipefail
 
-# --- Localisation du script / chargement de la config -----------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "$SCRIPT_DIR/.env" ] && { set -a; . "$SCRIPT_DIR/.env"; set +a; }
-
-# Valeurs par défaut (surchargées par deploy/server/.env ou l'environnement)
-UNION_PORT="${UNION_PORT:-6080}"
-UNION_SSL_PORT="${UNION_SSL_PORT:-6443}"
-PROMOTE_PORT="${PROMOTE_PORT:-6390}"
-DIASPORA_PORT="${DIASPORA_PORT:-6002}"
-UNION_REPO="${UNION_REPO:-https://github.com/Efraim0601/union-portal.git}"
-PROMOTE_REPO="${PROMOTE_REPO:-https://github.com/Efraim0601/promoteApp.git}"
-DIASPORA_REPO="${DIASPORA_REPO:-https://github.com/Kholia-1/diaspora-onboarding.git}"
-GIT_BRANCH="${GIT_BRANCH:-master}"
-PROMOTE_BRANCH="${PROMOTE_BRANCH:-$GIT_BRANCH}"
-DIASPORA_BRANCH="${DIASPORA_BRANCH:-$GIT_BRANCH}"
-UNION_BRANCH="${UNION_BRANCH:-$GIT_BRANCH}"
-DEPLOY_DIR="${DEPLOY_DIR:-/opt/afriland}"
 
 say()  { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '  \033[32m✓ %s\033[0m\n' "$*"; }
 warn() { printf '  \033[33m⚠ %s\033[0m\n' "$*"; }
 die()  { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-# --- 1. Prérequis -----------------------------------------------------------
-say "1/6  Vérification des prérequis"
-command -v git >/dev/null   || die "git manquant   -> sudo apt-get update && sudo apt-get install -y git"
-command -v docker >/dev/null || die "docker manquant -> https://docs.docker.com/engine/install/ubuntu/"
-docker compose version >/dev/null 2>&1 || die "plugin 'docker compose' manquant -> sudo apt-get install -y docker-compose-plugin"
-docker info >/dev/null 2>&1 || die "docker inaccessible (démarrez le service ou ajoutez l'utilisateur au groupe docker)"
-ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), compose $(docker compose version --short)"
+# --- Manifeste (+ surcharge locale) ----------------------------------------
+[ -f "$SCRIPT_DIR/components.env" ] || die "manifeste introuvable : $SCRIPT_DIR/components.env"
+set -a
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/components.env"
+[ -f "$SCRIPT_DIR/.env" ] && . "$SCRIPT_DIR/.env"
+set +a
 
-mkdir -p "$DEPLOY_DIR"
+# --- Options / sélection des composants ------------------------------------
+SYNC=1; CHECK_ONLY=0; SELECTED=""
+for a in "$@"; do
+  case "$a" in
+    --no-sync) SYNC=0 ;;
+    --check)   CHECK_ONLY=1 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -*)        die "option inconnue : $a" ;;
+    *)         SELECTED="$SELECTED $a" ;;
+  esac
+done
+TARGETS="${SELECTED:-$COMPONENTS}"
 
-# --- 2. Récupération des 3 dépôts ------------------------------------------
-say "2/6  Récupération des dépôts GitHub dans $DEPLOY_DIR"
-# Branche par défaut d'un dépôt distant (ex. master / main)
-remote_default_branch() { git ls-remote --symref "$1" HEAD 2>/dev/null | awk '/^ref:/{sub("refs/heads/","",$2); print $2; exit}'; }
-clone_or_pull() {  # <url> <dir> <branch souhaitée>
-  local url="$1" dir="$2" branch="$3"
-  # Si la branche demandée n'existe pas sur le remote, on retombe sur sa branche par défaut
-  # (union-portal & promoteApp = master ; diaspora-onboarding = main).
-  if ! git ls-remote --exit-code --heads "$url" "$branch" >/dev/null 2>&1; then
-    local def; def="$(remote_default_branch "$url")"
-    [ -n "$def" ] && { warn "branche '$branch' absente sur $(basename "$dir") -> utilisation de '$def'"; branch="$def"; }
+# Accès aux variables du manifeste : var promote DIR -> $PROMOTE_DIR
+var() { local n="${1^^}_$2"; printf '%s' "${!n:-}"; }
+
+# --- Prérequis --------------------------------------------------------------
+say "Prérequis"
+command -v git    >/dev/null || die "git manquant"
+command -v curl   >/dev/null || die "curl manquant"
+command -v docker >/dev/null || die "docker manquant"
+docker compose version >/dev/null 2>&1 || die "plugin 'docker compose' manquant"
+docker info >/dev/null 2>&1 || die "docker inaccessible (service arrêté ? droits ?)"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) / compose $(docker compose version --short)"
+ok "composants ciblés :$(printf ' %s' $TARGETS)"
+
+# ---------------------------------------------------------------------------
+# 1. Synchronisation git
+#    fetch avec refspec EXPLICITE (sinon origin/<branche> n'est pas créée et le
+#    checkout échoue) puis merge --ff-only : jamais de reset destructif, on
+#    échoue bruyamment si l'historique local a divergé.
+# ---------------------------------------------------------------------------
+sync_repo() {
+  local name="$1" dir repo branch
+  dir="$(var "$name" DIR)"; repo="$(var "$name" REPO)"; branch="$(var "$name" BRANCH)"
+
+  if [ ! -d "$dir/.git" ]; then
+    say "git $name : clonage de $repo ($branch)"
+    git clone -b "$branch" "$repo" "$dir" || die "clonage de $name impossible"
+    ok "$name cloné"
+    return
   fi
-  if [ -d "$dir/.git" ]; then
-    git -C "$dir" fetch --depth 1 origin "$branch" && git -C "$dir" checkout -q -B "$branch" "origin/$branch"
-    ok "maj $(basename "$dir") ($branch)"
+
+  if [ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]; then
+    warn "$name : modifications locales non commitées -> sync git ignorée (le code local sera déployé tel quel)"
+    return
+  fi
+
+  git -C "$dir" fetch -q origin "$branch:refs/remotes/origin/$branch" 2>/dev/null \
+    || git -C "$dir" fetch -q origin "$branch" \
+    || { warn "$name : fetch impossible (remote injoignable) — code local conservé"; return; }
+
+  git -C "$dir" checkout -q "$branch" 2>/dev/null || git -C "$dir" checkout -q -B "$branch" "origin/$branch"
+  if git -C "$dir" merge --ff-only -q "origin/$branch" 2>/dev/null; then
+    ok "$name @ $branch -> $(git -C "$dir" log -1 --format='%h %s' | cut -c1-60)"
   else
-    rm -rf "$dir"
-    git clone --depth 1 -b "$branch" "$url" "$dir"
-    ok "cloné $(basename "$dir") ($branch)"
+    warn "$name : l'historique local a divergé de origin/$branch — sync ignorée (résolvez à la main)"
   fi
 }
-clone_or_pull "$UNION_REPO"    "$DEPLOY_DIR/union-portal"        "$UNION_BRANCH"
-clone_or_pull "$PROMOTE_REPO"  "$DEPLOY_DIR/promoteApp"          "$PROMOTE_BRANCH"
-clone_or_pull "$DIASPORA_REPO" "$DEPLOY_DIR/diaspora-onboarding" "$DIASPORA_BRANCH"
 
-UNION="$DEPLOY_DIR/union-portal"
-PROMOTE="$DEPLOY_DIR/promoteApp"
-DIASPORA="$DEPLOY_DIR/diaspora-onboarding"
+# ---------------------------------------------------------------------------
+# 2. Override de ports : les compose de promote/diaspora ne publient pas (ou pas
+#    sur le bon port) leur backend. On génère l'override à côté du compose.
+# ---------------------------------------------------------------------------
+ports_override() {
+  local name="$1" dir svc host_port target_port file
+  dir="$(var "$name" DIR)"; svc="$(var "$name" SERVICE)"
+  host_port="$(var "$name" PORT)"; target_port="$(var "$name" TARGET_PORT)"
+  [ -n "$host_port" ] && [ -n "$target_port" ] || return 0   # composant sans remap
 
-# --- 3. Secrets (.env des backends) ----------------------------------------
-say "3/6  Fichiers d'environnement des backends"
-ensure_env() {  # <dir>
-  if [ ! -f "$1/.env" ] && [ -f "$1/.env.example" ]; then
-    cp "$1/.env.example" "$1/.env"
-    warn "$(basename "$1")/.env créé depuis .env.example — ÉDITEZ les secrets (mots de passe, JWT_SECRET, FERNET_KEY…) pour la prod"
-  else
-    ok "$(basename "$1")/.env présent"
-  fi
-}
-ensure_env "$PROMOTE"
-ensure_env "$DIASPORA"
-
-# --- 4. Backend promote (publie ${PROMOTE_PORT}) ---------------------------
-say "4/6  Backend promote (:$PROMOTE_PORT)"
-cat > "$DEPLOY_DIR/.promote-ports.yml" <<YML
+  file="$dir/.ports.override.yml"
+  cat > "$file" <<YML
+# Généré par deploy/server/deploy.sh — publie le service sur le port hôte du
+# manifeste. NE PAS éditer à la main (régénéré à chaque déploiement).
 services:
-  backend:
-    ports:
-      - "${PROMOTE_PORT}:8390"
-YML
-docker compose -f "$PROMOTE/docker-compose.yml" -f "$DEPLOY_DIR/.promote-ports.yml" up -d --build
-ok "promote démarré"
-
-# --- 5. Backend diaspora (remappe le port sur ${DIASPORA_PORT}) ------------
-say "5/6  Backend diaspora (:$DIASPORA_PORT)"
-# !override remplace la liste de ports du compose de base (10002:8010 -> DIASPORA_PORT:8010)
-cat > "$DEPLOY_DIR/.diaspora-ports.yml" <<YML
-services:
-  diaspora-onboarding:
+  $svc:
     ports: !override
-      - "${DIASPORA_PORT}:8010"
+      - "${host_port}:${target_port}"
 YML
-docker compose -f "$DIASPORA/docker-compose.yml" -f "$DEPLOY_DIR/.diaspora-ports.yml" up -d --build
-ok "diaspora démarré"
+  printf '%s' "$file"
+}
 
-# --- 6. Gateway union (build front dans Docker + run) ----------------------
-say "6/6  Portail unifié (:$UNION_PORT)"
-docker build -t afriland-union:latest "$UNION"
-docker rm -f afriland-union >/dev/null 2>&1 || true
-docker run -d --name afriland-union --restart unless-stopped \
-  --add-host host.docker.internal:host-gateway \
-  -e PROMOTE_UPSTREAM="host.docker.internal:${PROMOTE_PORT}" \
-  -e DIASPORA_UPSTREAM="host.docker.internal:${DIASPORA_PORT}" \
-  -p "${UNION_PORT}:80" -p "${UNION_SSL_PORT}:443" afriland-union:latest
-ok "gateway démarré"
+# ---------------------------------------------------------------------------
+# 3. Déploiement d'un composant : build -> recréation FORCÉE -> contrôle image
+#    --force-recreate est indispensable : sans lui, `up -d --build` construit la
+#    nouvelle image mais laisse le conteneur tourner sur l'ANCIENNE.
+# ---------------------------------------------------------------------------
+deploy_component() {
+  local name="$1" dir compose svc container files override img_tag img_running
+  dir="$(var "$name" DIR)"; compose="$(var "$name" COMPOSE)"
+  svc="$(var "$name" SERVICE)"; container="$(var "$name" CONTAINER)"
 
-# --- Vérification -----------------------------------------------------------
-say "Vérification"
-sleep 4
-code_union=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${UNION_PORT}/" || echo 000)
-code_api=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${UNION_PORT}/promote-api/products" || echo 000)
-[ "$code_union" = 200 ] && ok "portail HTTP $code_union" || warn "portail HTTP $code_union"
-[ "$code_api" = 200 ] && ok "proxy promote HTTP $code_api" || warn "proxy promote HTTP $code_api (le backend Spring peut mettre ~30 s à démarrer)"
+  [ -f "$dir/$compose" ] || die "$name : compose introuvable ($dir/$compose)"
+
+  say "Déploiement $name (service '$svc')"
+  files=(-f "$dir/$compose")
+  override="$(ports_override "$name")"
+  [ -n "$override" ] && files+=(-f "$override")
+
+  # Le portail a pu être lancé jadis par `docker run` (hors compose) : compose
+  # refuserait de réutiliser ce nom. On retire le conteneur hérité.
+  if docker inspect "$container" >/dev/null 2>&1 \
+     && [ -z "$(docker inspect "$container" --format '{{index .Config.Labels "com.docker.compose.project"}}')" ]; then
+    warn "$container : conteneur hérité (hors compose) -> supprimé pour reprise en main par compose"
+    docker rm -f "$container" >/dev/null
+  fi
+
+  # Build + run dans un log : en cas d'échec (compilation cassée, dépendance
+  # manquante…), on montre l'erreur RÉELLE au lieu de la noyer.
+  local log; log="$(mktemp)"
+  if ! docker compose "${files[@]}" up -d --build --force-recreate "$svc" >"$log" 2>&1; then
+    warn "$name : ÉCHEC du build/démarrage — extrait de l'erreur :"
+    grep -Ei 'error|failed to solve|exception|cannot find symbol' "$log" | tail -6 | sed 's/^/      /'
+    warn "$name : log complet -> $log  (le conteneur en place n'a PAS été touché)"
+    return 1
+  fi
+  rm -f "$log"
+
+  # Le conteneur tourne-t-il bien sur l'image qu'on vient de construire ?
+  img_tag="$(docker compose "${files[@]}" images -q "$svc" 2>/dev/null | head -1)"
+  img_running="$(docker inspect "$container" --format '{{.Image}}' 2>/dev/null || true)"
+  if [ -n "$img_tag" ] && [ -n "$img_running" ] && [ "${img_tag:0:12}" != "${img_running#sha256:}" ] \
+     && [ "${img_tag#sha256:}" != "${img_running#sha256:}" ]; then
+    warn "$name : le conteneur ne tourne PAS sur l'image fraîche ($img_running ≠ $img_tag)"
+  else
+    ok "$name recréé sur l'image fraîche"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# 4. Contrôles de santé
+# ---------------------------------------------------------------------------
+probe() {  # <libellé> <url> [attendu=200]
+  local label="$1" url="$2" want="${3:-200}" code
+  code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$url" || echo 000)
+  if [ "$code" = "$want" ]; then ok "$label -> $code"; else warn "$label -> $code (attendu $want)"; fi
+}
+
+wait_healthy() {  # <libellé> <url> : les backends Spring/FastAPI mettent ~30 s
+  local label="$1" url="$2" i
+  for i in $(seq 1 30); do
+    [ "$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "$url" || echo 000)" = 200 ] && { ok "$label prêt"; return; }
+    sleep 3
+  done
+  warn "$label toujours pas prêt après 90 s — voir : docker logs --tail 50 <conteneur>"
+}
+
+verify_all() {
+  say "Vérification de la solution"
+  wait_healthy "backend promote"  "$PROMOTE_HEALTH"
+  wait_healthy "backend diaspora" "$DIASPORA_HEALTH"
+  probe "payment hub  $HUB_HEALTH" "$HUB_HEALTH"
+  probe "portail HTTP  :$UNION_PORT"     "http://localhost:${UNION_PORT}/"
+  probe "portail HTTPS :$UNION_SSL_PORT" "https://localhost:${UNION_SSL_PORT}/"
+
+  # Proxy même origine : c'est ce que le navigateur emprunte réellement.
+  probe "proxy promote  /promote-api/products" "http://localhost:${UNION_PORT}/promote-api/products"
+  # ⚠ diaspora force HTTPS (redirection 308 si X-Forwarded-Proto=http) : on
+  #   sonde donc son API via le portail HTTPS, pas HTTP.
+  probe "proxy diaspora /api/* (via HTTPS)" \
+        "https://localhost:${UNION_SSL_PORT}${DIASPORA_PROXY_PROBE:-/api/backoffice/mastercard/config-status}"
+
+  # Le paiement doit bien passer par le Hub (et non un provider simulé).
+  local prov
+  prov=$(curl -s --max-time 5 "http://localhost:${PROMOTE_PORT}/api/payment/provider" 2>/dev/null || true)
+  case "$prov" in
+    *paymenthub*) ok "provider de paiement -> paymenthub" ;;
+    *)            warn "provider de paiement inattendu : ${prov:-<vide>} (attendu paymenthub)" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Exécution
+# ---------------------------------------------------------------------------
+if [ "$CHECK_ONLY" = 1 ]; then
+  say "État des conteneurs"
+  for c in $TARGETS; do
+    printf '  %-10s %s\n' "$c" "$(docker ps --filter "name=^$(var "$c" CONTAINER)$" --format '{{.Status}}  {{.Ports}}' || echo 'arrêté')"
+  done
+  verify_all
+  exit 0
+fi
+
+# Un composant en échec ne doit PAS bloquer les autres : on isole, on continue,
+# et on récapitule à la fin (le composant en échec garde son conteneur en place).
+FAILED=""
+for c in $TARGETS; do
+  [ "$SYNC" = 1 ] && sync_repo "$c"
+  deploy_component "$c" || FAILED="$FAILED $c"
+done
+
+verify_all
+
+if [ -n "$FAILED" ]; then
+  printf '\n\033[31m✗ Composants en échec :%s\033[0m\n' "$FAILED" >&2
+  printf '  Les autres composants sont déployés ; ceux-ci tournent encore sur leur ANCIENNE image.\n' >&2
+  exit 1
+fi
 
 cat <<EOF
 
-\033[1;32m✅ Déploiement terminé.\033[0m
-   • Portail unifié  : http://<serveur>:${UNION_PORT}
-   • Portail (HTTPS) : https://<serveur>:${UNION_SSL_PORT}   ← à utiliser pour la caméra/selfie
-                       (certificat auto-signé : accepter l'avertissement du navigateur une fois)
-   • Backend promote : http://<serveur>:${PROMOTE_PORT}/api
-   • Backend diaspora: http://<serveur>:${DIASPORA_PORT}/api
+$(printf '\033[1;32m✅ Solution déployée.\033[0m')
+   • Portail (HTTPS, à utiliser)  : https://<serveur>:${UNION_SSL_PORT}
+     ↳ requis pour la caméra/selfie ET pour l'API diaspora (elle force HTTPS).
+     ↳ certificat auto-signé : accepter l'avertissement du navigateur une fois.
+   • Portail (HTTP)               : http://<serveur>:${UNION_PORT}
+   • Backend promote              : http://<serveur>:${PROMOTE_PORT}/api
+   • Backend diaspora             : http://<serveur>:${DIASPORA_PORT}/api
+   • Payment Hub                  : ${HUB_HEALTH%/actuator/health}
 
+   Santé : bash deploy/server/deploy.sh --check
    Arrêt : bash deploy/server/stop.sh
-   Logs  : docker logs -f afriland-union   |   docker compose -f $PROMOTE/docker-compose.yml logs -f backend
+   Logs  : docker logs -f ${UNION_CONTAINER}
 EOF

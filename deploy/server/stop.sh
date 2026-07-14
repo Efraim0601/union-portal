@@ -1,19 +1,38 @@
 #!/usr/bin/env bash
-# Arrête le déploiement serveur (gateway + backends promote & diaspora).
+# ============================================================================
+# Arrêt de la solution union — piloté par le même manifeste que deploy.sh.
+#
+#   bash deploy/server/stop.sh              # arrête tout (sauf le Hub, mutualisé)
+#   bash deploy/server/stop.sh union        # un composant précis
+#   bash deploy/server/stop.sh hub          # le Hub, explicitement (voir ⚠)
+#
+# ⚠ Le Payment Hub sert AUSSI les autres applications de la machine : il n'est
+#   jamais arrêté par défaut, il faut le nommer explicitement.
+# ============================================================================
 set -uo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ -f "$SCRIPT_DIR/.env" ] && { set -a; . "$SCRIPT_DIR/.env"; set +a; }
-DEPLOY_DIR="${DEPLOY_DIR:-/opt/afriland}"
+set -a
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/components.env"
+[ -f "$SCRIPT_DIR/.env" ] && . "$SCRIPT_DIR/.env"
+set +a
 
-echo "■ Portail union"
-docker rm -f afriland-union >/dev/null 2>&1 || true
+var() { local n="${1^^}_$2"; printf '%s' "${!n:-}"; }
 
-echo "■ Backend diaspora"
-docker compose -f "$DEPLOY_DIR/diaspora-onboarding/docker-compose.yml" \
-  -f "$DEPLOY_DIR/.diaspora-ports.yml" down 2>/dev/null || true
+# Par défaut : tout sauf le Hub (mutualisé avec les autres applications).
+TARGETS="${*:-$(echo "$COMPONENTS" | tr ' ' '\n' | grep -v '^hub$' | tr '\n' ' ')}"
 
-echo "■ Backend promote"
-docker compose -f "$DEPLOY_DIR/promoteApp/docker-compose.yml" \
-  -f "$DEPLOY_DIR/.promote-ports.yml" down 2>/dev/null || true
+for c in $TARGETS; do
+  dir="$(var "$c" DIR)"; compose="$(var "$c" COMPOSE)"; svc="$(var "$c" SERVICE)"
+  [ -f "$dir/$compose" ] || { echo "  ⚠ $c : compose introuvable, ignoré"; continue; }
 
-echo "✅ Arrêté."
+  files=(-f "$dir/$compose")
+  [ -f "$dir/.ports.override.yml" ] && files+=(-f "$dir/.ports.override.yml")
+
+  echo "■ $c ($svc)"
+  docker compose "${files[@]}" stop "$svc" >/dev/null 2>&1 || true
+done
+
+echo "✅ Arrêté :$(printf ' %s' $TARGETS)"
+echo "   Relance : bash deploy/server/deploy.sh"

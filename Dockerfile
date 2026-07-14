@@ -43,5 +43,7 @@ COPY --from=build /app/dist/diaspora/browser/ /usr/share/nginx/html/remotes/dias
 COPY deploy/federation.manifest.prod.json     /usr/share/nginx/html/federation.manifest.json
 
 EXPOSE 80 443
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1
+# 127.0.0.1 explicite : « localhost » résout en IPv6 (::1) dans l'image, alors
+# que nginx n'écoute qu'en IPv4 -> le healthcheck échouait en permanence.
+HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1
 CMD ["nginx", "-g", "daemon off;"]

@@ -78,22 +78,18 @@ sur la **même origine** (`/`, `/remotes/promote/`, `/remotes/diaspora/`). Même
 **aucun CORS**. Les routes client `/promote` et `/diaspora` du shell ne collisionnent pas
 avec les assets statiques (servis sous `/remotes/…`).
 
-### Option A — build tout-en-un dans Docker (serveur avec réseau)
+### Le portail seul (sans les backends)
 ```bash
-docker compose up --build        # -> http://localhost:8080  +  https://localhost:8443
-# ou
-docker build -t afriland-union . && docker run -p 8080:80 -p 8443:443 afriland-union
+docker compose up --build -d     # -> http://localhost:6080  +  https://localhost:6443
 ```
 
-### Option B — build hors Docker puis empaqueter (rapide, réseau restreint)
-```bash
-npm run build:all
-docker build -f Dockerfile.serve -t afriland-union .
-docker run -p 8080:80 -p 8443:443 afriland-union     # http://localhost:8080  +  https://localhost:8443
-```
+> Pour déployer la **solution complète** (portail + promote + diaspora + payment hub),
+> n'utilisez pas ce compose directement : passez par le point d'entrée unique
+> [`deploy/server/deploy.sh`](#déploiement-centralisé-une-seule-commande).
 
-> Le port **8443 (HTTPS)** est nécessaire à la caméra (KYC) ; certificat auto-signé généré au
-> démarrage — cf. [HTTPS & caméra](#https--caméra-kyc).
+> Le port **HTTPS (6443)** est nécessaire à la caméra (KYC) **et à l'API diaspora**
+> (elle force HTTPS) ; certificat auto-signé généré au démarrage — cf.
+> [HTTPS & caméra](#https--caméra-kyc).
 
 ### Vérifié (image nginx réelle)
 | Endpoint | Attendu |
@@ -109,80 +105,69 @@ docker run -p 8080:80 -p 8443:443 afriland-union     # http://localhost:8080  + 
 > dans `deploy/nginx.conf` vers tes backends (promote `:8390`, diaspora FastAPI `:10002`),
 > ou branche-les via un réseau docker-compose.
 
-Fichiers de déploiement : `Dockerfile` (build+serve), `Dockerfile.serve` (serve seul),
-`docker-compose.yml`, `deploy/nginx.conf` (gateway), `deploy/federation.manifest.prod.json`.
+Fichiers de déploiement : `deploy/server/components.env` (**manifeste**, source unique de vérité),
+`deploy/server/deploy.sh` (**point d'entrée unique**), `deploy/server/stop.sh`, `Dockerfile`,
+`docker-compose.yml` (portail), `deploy/nginx.conf` (gateway), `deploy/federation.manifest.prod.json`.
 
-## Orchestration complète (gateway + backends) — une commande
+## Déploiement centralisé — une seule commande
 
-Le portail parle à **deux backends** vivant dans leurs propres dépôts :
-`promoteApp` (Spring Boot, staff/ventes/stats) et `diaspora-onboarding` (FastAPI).
-Ils **restent séparés** (équipes, stacks, `.env` distincts) ; on les orchestre sans les
-fusionner via un script qui lance chaque brique depuis son dossier :
+La solution est faite de **4 composants**, chacun dans son dépôt (équipes, stacks et cycles
+différents, intégrés par contrat HTTP). Ils ne sont **pas** fusionnés : ils sont **pilotés
+depuis union**, qui est le point de centralisation du déploiement.
 
 ```bash
-bash deploy/run-all.sh        # backend promote + backend diaspora + gateway union
-bash deploy/stop-all.sh       # tout arrêter
+bash deploy/server/deploy.sh              # toute la solution (git sync + build + run + santé)
+bash deploy/server/deploy.sh promote      # un seul composant
+bash deploy/server/deploy.sh --no-sync    # déployer le code local, sans git
+bash deploy/server/deploy.sh --check      # ne déploie rien : état + contrôles de santé
+bash deploy/server/stop.sh                # arrêt (le Hub, mutualisé, est épargné par défaut)
 ```
 
-Chemins des backends surchargeables : `PROMOTE_DIR=… DIASPORA_DIR=… bash deploy/run-all.sh`
-(par défaut `../../promoteApp` et `../../diaspora-onboarding`).
+Tout est décrit dans le **manifeste** [`deploy/server/components.env`](deploy/server/components.env) —
+dépôt, branche, chemin serveur, port hôte, service compose. **Pour changer un port, une branche
+ou ajouter un composant : on édite le manifeste, jamais le script.** Surcharge locale possible
+dans `deploy/server/.env` (chargé après, il gagne).
 
-**Câblage API** (proxy dans `deploy/nginx.conf`, origine unique — pas de CORS) :
+| Composant | Port hôte | Conteneur | Dépôt / branche |
+|---|---|---|---|
+| **Portail union** (nginx + 3 fronts) — HTTP / **HTTPS** | **6080** / **6443** | `afriland-union` | `union-portal` @ `master` |
+| Backend promote (Spring Boot + Postgres + MinIO) | **6390** | `promoteapp-backend-1` | `promoteApp` @ `feat/refonte-ux-parcours` |
+| Backend diaspora (FastAPI, OCR CNI) | **6002** | `diaspora-onboarding` | `diaspora-onboarding` @ `develop` |
+| Payment Hub (encaissement) | **8090** | `payment-hub-payment-hub-1` | `payment-hub` @ `main` |
+
+**Câblage API** (proxy `deploy/nginx.conf`, origine unique — pas de CORS) :
 
 | Front appelle | Proxifié vers | Backend |
 |---|---|---|
-| `/promote-api/*` | `host.docker.internal:8390/api/*` | promote (JWT, rôles, ventes, stats) |
-| `/api/*` | `host.docker.internal:10002/api/*` | diaspora (onboarding) |
+| `/promote-api/*` | `host.docker.internal:6390/api/*` | promote (JWT, rôles, ventes, stats) |
+| `/api/*` | `host.docker.internal:6002/api/*` | diaspora (onboarding) |
 
-- Le backend promote n'est pas publié par défaut → `deploy/promote.ports.override.yml`
-  publie `:8390` sur l'hôte (le gateway le joint via `host.docker.internal`).
+Ce que le script garantit (chaque point = un incident déjà vécu) :
+
+- **fetch avec refspec explicite** (`origin/<branche>` est bien créée, sinon le checkout échoue) ;
+- **`--force-recreate` systématique** : sans lui, `up -d --build` construit la nouvelle image mais
+  laisse tourner le conteneur sur l'**ancienne** — le déploiement semble réussi et ne l'est pas.
+  Le script **vérifie** ensuite que le conteneur tourne bien sur l'image fraîche ;
+- **jamais de reset destructif** : `merge --ff-only`, et sync ignorée si le dépôt a des
+  modifications locales ou un historique divergent ;
+- **override de ports généré** (`<dépôt>/.ports.override.yml`) : les compose de promote/diaspora
+  ne publient pas leur backend sur le bon port hôte. Ne jamais lancer `docker compose up` sur
+  promote **sans** cet override : le port 6390 disparaît et le portail perd son backend ;
+- **contrôles de santé** de bout en bout, y compris à travers le proxy et le provider de paiement
+  (`paymenthub` attendu).
+
+> ⚠ **Le Payment Hub est mutualisé** avec d'autres applications de la machine (compte marchand
+> global par provider). `deploy.sh` le redéploie, `stop.sh` ne l'arrête **pas** par défaut.
+
+> Le build du front se fait **dans Docker** (multi-stage `Dockerfile`) : le serveur n'a besoin
+> que de Docker (pas de Node).
+
 - **CORS** : l'en-tête `Origin` est neutralisé côté proxy (même origine) — sinon Spring
   rejette (« Invalid CORS request »). Idem en dev (`proxy.conf.js`, `removeHeader('origin')`).
 - **Connexion staff** : hub → « Espace collaborateur » → login → redirection par rôle
-  (`/promote/admin|manager|supervision|dashboard|cashier|print`). Comptes seedés dans
-  `promoteApp/.env`.
-
-> **Pourquoi pas un mono-repo unique ?** Les backends et le design-system
-> (`portal-client-firstpay`, partagé par d'autres apps) ont des propriétaires, stacks et
-> cycles différents, et sont intégrés par **contrat HTTP** stable. On garde donc les dépôts
-> séparés + cette fine couche d'orchestration.
-
-## Déploiement sur serveur Ubuntu (depuis GitHub, ports 6000-7000)
-
-Un script récupère les **3 dépôts** GitHub et déploie tout le système en conteneurs,
-avec des ports hôte dans la plage **6000-7000** :
-
-```bash
-# sur le serveur (prérequis : docker, docker compose, git) :
-git clone https://github.com/Efraim0601/union-portal.git
-cd union-portal
-cp deploy/server/.env.example deploy/server/.env   # (optionnel) ajuster ports / URLs / secrets
-bash deploy/server/deploy.sh                        # clone les 3 repos + build + run
-```
-
-| Service | Port hôte (défaut) | Conteneur |
-|---|---|---|
-| **Portail unifié** (nginx + 3 fronts) — HTTP | **6080** | `afriland-union` |
-| **Portail unifié** — **HTTPS** (caméra/selfie) | **6443** | `afriland-union` |
-| Backend promote (Spring Boot + Postgres + MinIO) | **6390** | `promoteapp-backend-1` |
-| Backend diaspora (FastAPI) | **6002** | `diaspora-onboarding` |
-
-- **Ports paramétrables** dans `deploy/server/.env` (`UNION_PORT`, `UNION_SSL_PORT`, `PROMOTE_PORT`,
-  `DIASPORA_PORT`) ainsi que les URLs des dépôts et la branche.
-- **HTTPS** est indispensable pour la caméra (KYC) — accès `https://<serveur>:6443` (cert auto-signé) ;
-  voir [HTTPS & caméra](#https--caméra-kyc).
-- **Paiement réel** : mettre `APP_PAYMENT_PROVIDER=paymenthub` + identifiants dans `promoteApp/.env` ;
+  (`/promote/admin|manager|supervision|dashboard|cashier|print`).
+- **Paiement réel** : `APP_PAYMENT_PROVIDER=paymenthub` dans `promoteApp/.env` ;
   voir [Paiement Payment Hub](#paiement-mobile-money-payment-hub).
-- Le portail **proxifie** `/promote-api` → promote et `/api` → diaspora (même origine, pas de CORS).
-  Les upstreams nginx sont **substitués au démarrage** (`PROMOTE_UPSTREAM`/`DIASPORA_UPSTREAM`,
-  cf. `deploy/nginx.conf` en template envsubst) → une seule image pour tous les ports.
-- Secrets : au 1ᵉʳ lancement, `promoteApp/.env` et `diaspora-onboarding/.env` sont créés depuis
-  leurs `.env.example` — **éditez-les** (mots de passe, `JWT_SECRET`, `FERNET_KEY`) avant la prod.
-- Arrêt : `bash deploy/server/stop.sh`.
-
-> Le build du front se fait **dans Docker** (multi-stage `Dockerfile`) : le serveur n'a besoin
-> que de Docker (pas de Node). Réseau npm restreint ? Basculez sur le build hôte (`npm run build:all`
-> + `Dockerfile.serve`).
 
 ## HTTPS & caméra (KYC)
 

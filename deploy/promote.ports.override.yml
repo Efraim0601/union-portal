@@ -1,8 +1,0 @@
-# Override appliqué au docker-compose du backend promote pour PUBLIER son port sur
-# l'hôte (0.0.0.0:8390). Le gateway union le joint alors via host.docker.internal.
-# Le repo promoteApp ne publie pas ce port par défaut (backend scalable, derrière son
-# propre nginx) — cet override reste donc côté union, sans modifier promoteApp.
-services:
-  backend:
-    ports:
-      - "8390:8390"

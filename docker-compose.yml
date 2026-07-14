@@ -1,27 +1,37 @@
-# Déploiement simple : docker compose up --build  ->  http://localhost:8080
-# Une seule image (gateway) sert shell + promote + diaspora sur la même origine.
+# ============================================================================
+# Portail union (gateway) — une seule image nginx sert shell + promote +
+# diaspora sur la MÊME origine, et proxifie les backends :
+#   /promote-api/*  -> backend promote   (host.docker.internal:${PROMOTE_PORT})
+#   /api/*          -> backend diaspora  (host.docker.internal:${DIASPORA_PORT})
 #
-# APIs (proxy défini dans deploy/nginx.conf) :
-#   /promote-api/*  -> backend promote (staff, ventes, stats)  :8390 /api/*
-#   /api/*          -> backend diaspora (onboarding)           :10002 /api/*
+# Ce compose ne déploie QUE le portail. Pour déployer la solution complète
+# (portail + promote + diaspora + payment hub), utilisez le point d'entrée
+# centralisé, qui pilote ce fichier avec les valeurs du manifeste
+# (deploy/server/components.env) :
 #
-# Par défaut le proxy pointe vers les backends de la MACHINE HÔTE via
-# host.docker.internal (activé par extra_hosts ci-dessous). Pour des backends
-# conteneurisés, mettez-les sur le même réseau et changez les cibles proxy_pass
-# de nginx.conf par les noms de services (ex. http://promote-backend:8390).
+#   bash deploy/server/deploy.sh              # toute la solution
+#   bash deploy/server/deploy.sh union        # le portail seul
+#
+# Lancé à la main (hors deploy.sh), les valeurs par défaut ci-dessous
+# s'appliquent : http://localhost:6080 et https://localhost:6443.
+# ============================================================================
 services:
   union:
     build:
       context: .
       dockerfile: Dockerfile
     image: afriland-union:latest
-    container_name: afriland-union
+    container_name: ${UNION_CONTAINER:-afriland-union}
     ports:
-      - "8080:80"
-      # HTTPS (certificat auto-signé) — requis pour la caméra/selfie.
-      - "8443:443"
+      - "${UNION_PORT:-6080}:80"
+      # HTTPS (certificat auto-signé, généré au démarrage) — requis pour la
+      # caméra/selfie ET pour l'API diaspora, qui force HTTPS.
+      - "${UNION_SSL_PORT:-6443}:443"
+    environment:
+      # Upstreams substitués dans le template nginx au démarrage.
+      PROMOTE_UPSTREAM: "${PROMOTE_UPSTREAM:-host.docker.internal:6390}"
+      DIASPORA_UPSTREAM: "${DIASPORA_UPSTREAM:-host.docker.internal:6002}"
     restart: unless-stopped
-    # Permet au conteneur d'atteindre un backend qui tourne sur l'hôte
-    # (http://host.docker.internal:8390 / :10002).
+    # Permet au conteneur d'atteindre les backends qui tournent sur l'hôte.
     extra_hosts:
       - "host.docker.internal:host-gateway"
