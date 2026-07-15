@@ -75,7 +75,7 @@ export const PARTICULIER_ONBOARDING_STEPS: OnboardingStep[] = [
     description: 'Adresse, téléphone, parents et contacts de référence.',
     kind: 'generic',
     fields: [
-      'address_location', 'postal_box', 'phone', 'whatsapp_phone_full', 'email',
+      'address_location', 'postal_box', 'whatsapp_phone_full', 'email',
       'father_name', 'father_phone', 'mother_name', 'mother_phone',
       'contact_person_1_name', 'contact_person_1_phone',
       'contact_person_2_name', 'contact_person_2_phone',
@@ -89,9 +89,7 @@ export const PARTICULIER_ONBOARDING_STEPS: OnboardingStep[] = [
     kind: 'generic',
     fields: [
       'identity_document_type', 'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',
-      'profession', 'income_type', 'income_range',
-      'activity_sector', 'activity_subsector',
-      'income_currency',
+      'profession', 'income_range',
     ],
   },
   {

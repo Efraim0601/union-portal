@@ -116,6 +116,14 @@ function buildMockResponse(method: string, url: string, body: unknown, authHeade
     };
   }
 
+  // ---- Pré-onboarding : OCR du plan de localisation (adresse + boîte postale si lisibles) ----
+  if (method === 'POST' && path === 'pre-onboarding/extract-address') {
+    return {
+      address_location: 'Quartier Bonapriso, Rue Njo-Njo, derrière la pharmacie du Rond-Point',
+      postal_box: 'BP 4567 Douala',
+    };
+  }
+
   // ---- Pré-onboarding : upload de document (non-OCR, selfie, vidéo) ----
   if (method === 'POST' && /^pre-onboarding\/[^/]+\/documents$/.test(path)) {
     return { received: true };
@@ -217,6 +225,20 @@ const LOOKUP_DEFAULTS: Record<string, unknown> = {
     { code: 'TRANSACTIONS_COURANTES', name: 'Transactions courantes' },
     { code: 'TRANSFERTS_INTERNATIONAUX', name: 'Transferts internationaux' },
     { code: 'INVESTISSEMENT', name: 'Investissement' },
+    { code: 'AUTRE', name: 'Autre' },
+  ],
+  // Liste provisoire en attendant le branchement sur Amplitude (cf. demande produit) — éditable
+  // dès maintenant via /admin/parametrage, à remplacer/compléter par l'export Amplitude réel.
+  professions: [
+    { code: 'SALARIE_PRIVE', name: 'Salarié du secteur privé' },
+    { code: 'FONCTIONNAIRE', name: 'Fonctionnaire' },
+    { code: 'COMMERCANT', name: 'Commerçant(e)' },
+    { code: 'ENTREPRENEUR', name: 'Entrepreneur / Chef d’entreprise' },
+    { code: 'PROFESSION_LIBERALE', name: 'Profession libérale' },
+    { code: 'AGRICULTEUR', name: 'Agriculteur / Éleveur' },
+    { code: 'ETUDIANT', name: 'Étudiant(e)' },
+    { code: 'RETRAITE', name: 'Retraité(e)' },
+    { code: 'SANS_EMPLOI', name: 'Sans emploi' },
     { code: 'AUTRE', name: 'Autre' },
   ],
   subsectors: [

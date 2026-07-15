@@ -21,7 +21,7 @@ const KYC_SMART_CAPTURE = true;
 const T: Record<string, string> = {
   selfie_retake: 'Reprendre',
   cam_gallery: 'Choisir depuis la galerie',
-  cam_open: 'Activer la caméra',
+  cam_open: 'Afficher la caméra',
   cam_take: 'Prendre la photo',
   cam_front: 'Caméra avant',
   cam_rear: 'Caméra arrière',
@@ -120,6 +120,11 @@ const T: Record<string, string> = {
             <span>{{ detectMsg() }}</span>
           </p>
         }
+        @if (liveActive() && manualOverrideAvailable() && detectState() !== 'ready') {
+          <p style="font-size:11.5px;color:#6B7280;text-align:center;line-height:1.4;max-width:280px;margin:0;">
+            La détection automatique ne trouve rien — vous pouvez prendre la photo manuellement.
+          </p>
+        }
         <p style="font-size:12px;color:#6B7280;text-align:center;line-height:1.45;max-width:260px;margin:0;">{{ guide || T['selfie_guide'] }}</p>
         @if (fileError()) {
           <p style="display:flex;gap:7px;align-items:flex-start;font-size:12px;line-height:1.4;max-width:280px;text-align:left;color:#C8102E;font-weight:600;background:rgba(200,16,46,0.06);border-radius:10px;padding:9px 11px;margin:0;">
@@ -193,6 +198,12 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
   /** Nom du fichier importé quand ce n'est pas une image (ex. PDF) — pas d'aperçu recadré possible. */
   pickedDocName = signal<string | null>(null);
   fileError = signal<string | null>(null);
+  /** Passé `MANUAL_OVERRIDE_DELAY_MS` après ouverture caméra sans détection concluante (mauvais
+   *  éclairage, angle, appareil ancien…), débloque la capture manuelle pour ne pas bloquer
+   *  l'utilisateur indéfiniment sur le selfie liveness. */
+  manualOverrideAvailable = signal(false);
+  private manualOverrideTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MANUAL_OVERRIDE_DELAY_MS = 8000;
   private stream: MediaStream | null = null;
 
   private rafId = 0;
@@ -222,7 +233,7 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
   canShoot(): boolean {
     if (!this.liveActive() || this.detect !== 'face') return true;
     const s = this.detectState();
-    return s === 'ready' || s === 'idle';
+    return s === 'ready' || s === 'idle' || this.manualOverrideAvailable();
   }
 
   detectMsg(): string {
@@ -247,6 +258,12 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
       this.streaming.set(true);
       setTimeout(() => { if (this.video) this.video.nativeElement.srcObject = this.stream; }, 0);
       this.startDetection();
+      if (this.detect === 'face') {
+        this.manualOverrideTimer = setTimeout(
+          () => this.manualOverrideAvailable.set(true),
+          DiasporaPhotoCapture.MANUAL_OVERRIDE_DELAY_MS,
+        );
+      }
     } catch {
       this.simulate();
     }
@@ -530,6 +547,8 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
   private stop() {
     this.stopDetection();
     this.detectState.set('idle');
+    if (this.manualOverrideTimer) { clearTimeout(this.manualOverrideTimer); this.manualOverrideTimer = null; }
+    this.manualOverrideAvailable.set(false);
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.streaming.set(false);

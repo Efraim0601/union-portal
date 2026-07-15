@@ -20,11 +20,13 @@ export interface DocumentsStepState {
   identitySides: Partial<Record<IdentitySide, DocStatus>>;
   ocrFields: Partial<ApplicationCreate>;
   ocrExtracted: boolean;
+  /** Adresse / boîte postale extraites du plan de localisation (best-effort, souvent partiel). */
+  addressOcrFields: Partial<ApplicationCreate>;
   /** Aperçus (data URL) déjà capturés/importés, par clé de document ('IDENTITY_RECTO', 'IDENTITY_VERSO', req.key). */
   previews: Record<string, string>;
 }
 export const EMPTY_DOCUMENTS_STATE: DocumentsStepState = {
-  status: {}, identityType: 'CNI', identitySides: {}, ocrFields: {}, ocrExtracted: false, previews: {},
+  status: {}, identityType: 'CNI', identitySides: {}, ocrFields: {}, ocrExtracted: false, addressOcrFields: {}, previews: {},
 };
 
 const OCR_FIELD_LABELS: Record<string, string> = {
@@ -56,7 +58,7 @@ const DOUBLE_SIDED_TYPES: readonly IdentityDocumentType[] = ['CNI', 'CARTE_SEJOU
           </onb-form-field>
 
           <p style="font-size:12px;font-weight:600;color:#151821;margin:14px 0 8px;">
-            {{ identityNeedsBothSides() ? 'Recto (face avec photo)' : 'Page photo' }}
+            {{ identityNeedsBothSides() ? 'Recto' : 'Page photo' }}
           </p>
           <diaspora-photo-capture
             [guide]="identityNeedsBothSides() ? 'Cadrez le recto entier, bien à plat.' : 'Cadrez la page photo du passeport, bien à plat.'"
@@ -130,6 +132,7 @@ export class DiasporaDocumentsStep implements OnInit {
   identitySides = signal<Partial<Record<IdentitySide, DocStatus>>>({});
   ocrFields = signal<Partial<ApplicationCreate>>({});
   ocrExtracted = signal(false);
+  addressOcrFields = signal<Partial<ApplicationCreate>>({});
   previews = signal<Record<string, string>>({});
 
   ngOnInit(): void {
@@ -138,6 +141,7 @@ export class DiasporaDocumentsStep implements OnInit {
     this.identitySides.set(this.state.identitySides);
     this.ocrFields.set(this.state.ocrFields);
     this.ocrExtracted.set(this.state.ocrExtracted);
+    this.addressOcrFields.set(this.state.addressOcrFields);
     this.previews.set(this.state.previews);
   }
 
@@ -148,6 +152,7 @@ export class DiasporaDocumentsStep implements OnInit {
       identitySides: this.identitySides(),
       ocrFields: this.ocrFields(),
       ocrExtracted: this.ocrExtracted(),
+      addressOcrFields: this.addressOcrFields(),
       previews: this.previews(),
     });
   }
@@ -273,6 +278,21 @@ export class DiasporaDocumentsStep implements OnInit {
       next: () => { this.status.update((s) => ({ ...s, [req.key]: 'done' })); this.emitState(); },
       error: () => { this.status.update((s) => ({ ...s, [req.key]: 'error' })); this.emitState(); },
     });
+
+    // Plan de localisation : tentative d'extraction best-effort de l'adresse / boîte postale,
+    // pour préremplir l'étape « Coordonnées & personnes à contacter » (l'utilisateur reste libre
+    // de corriger — l'OCR d'un plan dessiné à la main est intrinsèquement peu fiable).
+    if (req.key === 'ADDRESS_PROOF' && !file.type.startsWith('application/pdf')) {
+      this.api.preOnboardingExtractAddress(file).subscribe({
+        next: (res) => {
+          const extracted: Partial<ApplicationCreate> = {};
+          if (res.address_location) extracted.address_location = res.address_location;
+          if (res.postal_box) extracted.postal_box = res.postal_box;
+          if (Object.keys(extracted).length) { this.addressOcrFields.set(extracted); this.emitState(); }
+        },
+        error: () => { /* best-effort — l'utilisateur saisit manuellement en cas d'échec */ },
+      });
+    }
   }
 
   onContinue(e: Event): void {
@@ -280,6 +300,7 @@ export class DiasporaDocumentsStep implements OnInit {
     if (!this.ready()) return;
     this.modelChange.emit({
       ...this.model,
+      ...this.addressOcrFields(),
       ...this.ocrFields(),
       identity_document_type: this.identityType(),
     });

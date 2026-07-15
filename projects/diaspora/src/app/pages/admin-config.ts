@@ -87,7 +87,7 @@ const CURRENCIES = ['XAF', 'EUR', 'USD'];
           </onb-section-card>
         }
 
-        <onb-section-card title="Sous-secteurs d'activité" subtitle="Rattachés à un secteur ci-dessus par son code.">
+        <onb-section-card title="Sous-secteurs d'activité" subtitle="Rattachés à un secteur ci-dessus par son code. Retiré du formulaire client (rempli par le GFC en back-office).">
           <div style="display:flex;flex-direction:column;gap:10px;">
             @for (row of subsectors(); track $index) {
               <div style="display:grid;grid-template-columns:140px 1fr 160px auto;gap:10px;align-items:end;">
@@ -188,6 +188,7 @@ export class DiasporaAdminConfigPage {
   incomeTypes = signal<LookupOption[]>([]);
   fundsOrigins = signal<LookupOption[]>([]);
   accountObjects = signal<LookupOption[]>([]);
+  professions = signal<LookupOption[]>([]);
   subsectors = signal<Subsector[]>([]);
   packagesSig = signal<PackageOffer[]>([]);
 
@@ -196,9 +197,10 @@ export class DiasporaAdminConfigPage {
   private savedTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly lookupSections: LookupSection[] = [
-    { kind: 'sectors', title: "Secteurs d'activité", subtitle: 'Liste affichée à l’étape « Pièce d’identité & activité ».', rows: this.sectors },
-    { kind: 'income-ranges', title: 'Tranches de revenu', subtitle: 'Liste affichée à l’étape « Pièce d’identité & activité ».', rows: this.incomeRanges },
-    { kind: 'income-types', title: 'Types de revenu', subtitle: 'Liste affichée à l’étape « Pièce d’identité & activité ».', rows: this.incomeTypes },
+    { kind: 'sectors', title: "Secteurs d'activité", subtitle: 'Retiré du formulaire client (rempli par le GFC en back-office) — liste conservée ici pour cet usage interne.', rows: this.sectors },
+    { kind: 'professions', title: 'Professions', subtitle: 'Liste provisoire affichée à l’étape « Pièce d’identité & activité », en attendant le branchement sur Amplitude.', rows: this.professions },
+    { kind: 'income-ranges', title: 'Tranches de revenu', subtitle: 'Liste provisoire affichée à l’étape « Pièce d’identité & activité », en attendant le branchement sur Amplitude.', rows: this.incomeRanges },
+    { kind: 'income-types', title: 'Types de revenu', subtitle: 'Retiré du formulaire client — liste conservée pour un usage back-office éventuel.', rows: this.incomeTypes },
     { kind: 'funds-origins', title: 'Origine des fonds', subtitle: 'Liste affichée à l’étape « Formule & agence ». Prévoir un code "AUTRE" pour activer le champ libre.', rows: this.fundsOrigins },
     { kind: 'account-objects', title: 'Objet du compte', subtitle: 'Liste affichée à l’étape « Formule & agence ». Prévoir un code "AUTRE" pour activer le champ libre.', rows: this.accountObjects },
   ];

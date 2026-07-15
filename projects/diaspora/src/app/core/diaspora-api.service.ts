@@ -91,6 +91,12 @@ export class DiasporaApi {
     form.append('document_type', documentType);
     return this.http.post(`${this.base}/pre-onboarding/extract`, form);
   }
+  /** OCR best-effort sur le plan de localisation — adresse et boîte postale si lisibles sur le document. */
+  preOnboardingExtractAddress(file: File): Observable<{ address_location?: string; postal_box?: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ address_location?: string; postal_box?: string }>(`${this.base}/pre-onboarding/extract-address`, form);
+  }
 
   // ---- Pré-onboarding : OTP WhatsApp (Callbell, côté backend) ----
   // Routes réelles : POST /pre-onboarding/otp/{send,verify} (app/routers/pre_onboarding.py).

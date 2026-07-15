@@ -98,7 +98,7 @@ export interface Agency { code: string; name: string; city?: string; }
  * origine des fonds, objet du compte) — endpoints /api/lookups/{kind}, cf. LookupKind.
  */
 export interface LookupOption { code: string; name: string; }
-export type LookupKind = 'sectors' | 'income-ranges' | 'income-types' | 'funds-origins' | 'account-objects';
+export type LookupKind = 'sectors' | 'income-ranges' | 'income-types' | 'funds-origins' | 'account-objects' | 'professions';
 
 /** Formule de compte (Budget/Business/Eco…) — paramétrable via l'interface admin (/api/lookups/packages). */
 export interface PackageOffer {

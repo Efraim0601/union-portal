@@ -42,7 +42,7 @@ import { DspIcon } from './capture-icons';
         <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
           @if (!streaming()) {
             <button type="button" (click)="start()" [disabled]="starting()" style="width:auto;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-              <dsp-ic name="camera" [size]="18"></dsp-ic> Activer la caméra
+              <dsp-ic name="camera" [size]="18"></dsp-ic> Afficher la caméra
             </button>
           } @else if (!recording()) {
             <button type="button" (click)="record()" style="width:auto;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">

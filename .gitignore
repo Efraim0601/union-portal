@@ -12,6 +12,10 @@ node_modules/
 __pycache__/
 *.pyc
 
+# server/diaspora-otp : base SQLite + documents/pièces d'identité uploadés (données
+# personnelles réelles une fois testé en conditions réelles — jamais dans git).
+server/diaspora-otp/data/
+
 # Tests / couverture
 /coverage
 

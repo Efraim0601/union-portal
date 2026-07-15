@@ -14,14 +14,14 @@ import { DiasporaDocumentsStep, DocumentsStepState, EMPTY_DOCUMENTS_STATE } from
 import { DiasporaBiometricsStep, BiometricsStepState, EMPTY_BIOMETRICS_STATE } from './steps/biometrics-step';
 
 const LABELS: Record<string, string> = {
-  last_name: 'Nom de famille', first_name: 'Prénom(s)', birth_name: 'Nom de naissance / Nom de jeune fille',
+  last_name: 'Nom', first_name: 'Prénom(s)', birth_name: 'Nom d’épouse',
   birth_date: 'Date de naissance', birth_place: 'Lieu de naissance',
   birth_department: 'Département de naissance', sex: 'Sexe',
   marital_status: 'Situation matrimoniale', matrimonial_regime: 'Régime matrimonial',
   father_name: 'Nom et prénoms du père', father_phone: 'Téléphone du père',
   mother_name: 'Nom et prénoms de la mère', mother_phone: 'Téléphone de la mère',
   nationality: 'Nationalité', residence: 'Pays de résidence', residency_status: 'Statut de résidence',
-  address_location: 'Adresse', postal_box: 'Boîte postale', phone: 'Téléphone',
+  address_location: 'Adresse', postal_box: 'Boîte postale',
   whatsapp_phone_full: 'WhatsApp', email: 'E-mail',
   contact_person_1_name: 'Contact 1 — nom et prénoms', contact_person_1_phone: 'Contact 1 — téléphone',
   contact_person_2_name: 'Contact 2 — nom et prénoms', contact_person_2_phone: 'Contact 2 — téléphone',
@@ -42,6 +42,9 @@ const ENUMS: Record<string, { value: string; label: string }[]> = {
   marital_status: [
     { value: 'SINGLE', label: 'Célibataire' }, { value: 'MARRIED', label: 'Marié(e)' },
     { value: 'DIVORCED', label: 'Divorcé(e)' }, { value: 'WIDOWED', label: 'Veuf/Veuve' },
+  ],
+  matrimonial_regime: [
+    { value: 'MONOGAMIE', label: 'Monogamie' }, { value: 'POLYGAMIE', label: 'Polygamie' },
   ],
   income_currency: [
     { value: 'XAF', label: 'FCFA (XAF)' }, { value: 'EUR', label: 'Euro (EUR)' }, { value: 'USD', label: 'Dollar (USD)' },
@@ -65,6 +68,17 @@ const IDENTITY_TYPE_LABELS: Record<string, string> = {
 const READONLY_ONCE_FILLED = new Set([
   'residence', 'identity_document_type',
   'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',
+]);
+
+/** Champs obligatoires — bloquent le passage à l'étape suivante tant qu'ils sont vides
+ *  (en plus de l'astérisque affiché sur le libellé). */
+const REQUIRED_FIELDS = new Set([
+  'sex', 'marital_status', 'last_name', 'first_name', 'birth_place', 'birth_date', 'residence', 'nationality',
+  'address_location', 'postal_box', 'whatsapp_phone_full', 'email',
+  'father_name', 'father_phone', 'mother_name', 'mother_phone',
+  'contact_person_1_name', 'contact_person_1_phone', 'contact_person_2_name', 'contact_person_2_phone',
+  'identity_document_type', 'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',
+  'profession', 'income_range',
 ]);
 
 /** Bookkeeping interne — jamais affiché dans le récapitulatif final (la case à cocher le montre déjà). */
@@ -160,7 +174,7 @@ const REVIEW_HIDDEN_KEYS = new Set([
                       @for (f of step().fields; track f) {
                         @if (isVisible(f)) {
                           <div [style.grid-column]="isWide(f) ? '1 / -1' : 'auto'">
-                            <onb-form-field [label]="label(f)">
+                            <onb-form-field [label]="label(f)" [required]="isRequired(f)">
                               @if (isReadOnly(f)) {
                                 <div style="padding:10px 12px;border:1px solid rgba(20,20,30,0.08);border-radius:8px;background:#F7F2EC;font-size:13.5px;color:#151821;">
                                   {{ displayValue(f) }}
@@ -247,6 +261,7 @@ export class DiasporaOnboardingPage {
   private incomeTypes = signal<LookupOption[]>([]);
   private fundsOrigins = signal<LookupOption[]>([]);
   private accountObjects = signal<LookupOption[]>([]);
+  private professions = signal<LookupOption[]>([]);
   readonly packages = signal<PackageOffer[]>([]);
   readonly model = signal<Partial<ApplicationCreate>>({ client_type: 'PARTICULIER' });
   /** Survit à la destruction/recréation des étapes documents/biométrie lors de la navigation (@switch). */
@@ -267,6 +282,7 @@ export class DiasporaOnboardingPage {
     this.api.lookup('income-types').subscribe({ next: (l) => this.incomeTypes.set(l ?? []), error: () => {} });
     this.api.lookup('funds-origins').subscribe({ next: (l) => this.fundsOrigins.set(l ?? []), error: () => {} });
     this.api.lookup('account-objects').subscribe({ next: (l) => this.accountObjects.set(l ?? []), error: () => {} });
+    this.api.lookup('professions').subscribe({ next: (l) => this.professions.set(l ?? []), error: () => {} });
     this.api.lookupSubsectors().subscribe({ next: (l) => this.subsectorsAll.set(l ?? []), error: () => {} });
     this.api.packages().subscribe({ next: (l) => this.packages.set(l ?? []), error: () => {} });
   }
@@ -274,6 +290,12 @@ export class DiasporaOnboardingPage {
   label(f: string): string { return LABELS[f] ?? f; }
   isWide(f: string): boolean { return f === 'address_location' || f === 'email'; }
   isReadOnly(f: string): boolean { return READONLY_ONCE_FILLED.has(f) && !!this.value(f); }
+  isRequired(f: string): boolean { return REQUIRED_FIELDS.has(f); }
+  /** Un champ obligatoire mais masqué (ex. régime matrimonial pour un homme célibataire) ne
+   *  doit jamais bloquer la progression — seuls les champs visibles sont vérifiés. */
+  private stepValid(): boolean {
+    return this.step().fields.every((f) => !REQUIRED_FIELDS.has(f) || !this.isVisible(f) || !!this.value(f));
+  }
   displayValue(f: string): string {
     if (f === 'identity_document_type') return IDENTITY_TYPE_LABELS[this.value(f)] ?? this.value(f);
     if (f === 'residence') return this.countries().find((c) => c.code === this.value(f))?.name ?? this.value(f);
@@ -283,6 +305,14 @@ export class DiasporaOnboardingPage {
   isVisible(f: string): boolean {
     if (f === 'funds_origin_other') return this.value('funds_origin') === 'AUTRE';
     if (f === 'account_object_other') return this.value('account_object') === 'AUTRE';
+    // Régime matrimonial ne concerne pas un homme célibataire.
+    if (f === 'matrimonial_regime') {
+      return !(this.value('sex') === 'M' && this.value('marital_status') === 'SINGLE');
+    }
+    // Nom d'épouse : uniquement pertinent pour une personne mariée ou veuve.
+    if (f === 'birth_name') {
+      return this.value('marital_status') === 'MARRIED' || this.value('marital_status') === 'WIDOWED';
+    }
     return true;
   }
   inputType(f: string): string {
@@ -306,6 +336,7 @@ export class DiasporaOnboardingPage {
     if (f === 'income_type') return this.incomeTypes().map((r) => ({ value: r.code, label: r.name }));
     if (f === 'funds_origin') return this.fundsOrigins().map((r) => ({ value: r.code, label: r.name }));
     if (f === 'account_object') return this.accountObjects().map((r) => ({ value: r.code, label: r.name }));
+    if (f === 'profession') return this.professions().map((r) => ({ value: r.code, label: r.name }));
     return null;
   }
   value(f: string): string { return String((this.model() as Record<string, unknown>)[f] ?? ''); }
@@ -329,11 +360,16 @@ export class DiasporaOnboardingPage {
 
   onSubmitForm(e: Event): void {
     e.preventDefault();
-    if (this.step().key === 'review') this.submit();
-    else this.next();
+    if (this.step().key === 'review') { this.submit(); return; }
+    if (this.step().kind === 'generic' && !this.stepValid()) {
+      this.error.set('Veuillez remplir tous les champs obligatoires avant de continuer.');
+      return;
+    }
+    this.error.set(null);
+    this.next();
   }
   next(): void { if (this.current() < this.steps.length) this.current.update((v) => v + 1); }
-  prev(): void { if (this.current() > 1) this.current.update((v) => v - 1); }
+  prev(): void { this.error.set(null); if (this.current() > 1) this.current.update((v) => v - 1); }
 
   submit(): void {
     if (!this.model().consent_accepted) {
