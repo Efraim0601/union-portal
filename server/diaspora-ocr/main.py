@@ -21,26 +21,47 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 _ocr = RapidOCR()
 
-MRZ_LINE = re.compile(r"^[A-Z0-9<]{28,44}$")
+TD1_LEN, TD3_LEN = 30, 44
+LEN_TOLERANCE = 3  # marge pour les erreurs de lecture OCR (caractère en trop / manquant)
+MIN_FILL_CHARS = 2  # nb minimum de '<' — quasi inexistant dans du texte imprimé normal,
+                     # c'est ce qui distingue le plus fiablement une vraie ligne MRZ du reste
+                     # du texte de la pièce (nom imprimé, mentions, etc.).
+
+MRZ_CHARSET = re.compile(r"^[A-Z0-9<]+$")
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)  # flush=True : stdout bufferisé par bloc une fois redirigé/piped
 
 
 def ocr_lines(image_bytes: bytes) -> list[str]:
     """Lignes de texte OCR triées de haut en bas (position Y de la boîte englobante) —
     indispensable pour la MRZ où chaque ligne a un rôle fixe selon sa position
-    (TD1 : 1=doc, 2=biodata, 3=noms ; TD3 : 1=noms, 2=biodata), pas selon son contenu
-    seul (plusieurs lignes peuvent contenir '<<' à cause du remplissage)."""
+    (TD1 : 1=doc, 2=biodata, 3=noms ; TD3 : 1=noms, 2=biodata)."""
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     result, _ = _ocr(np.array(img))
     if not result:
         return []
-    # RapidOCR renvoie [[box, texte, confiance], ...], box = 4 points [x,y].
     rows = sorted(result, key=lambda r: sum(p[1] for p in r[0]) / len(r[0]))
     # La MRZ ne contient jamais d'espace, seulement des '<'.
     return [str(r[1]).upper().replace(" ", "") for r in rows]
 
 
-def find_mrz_candidates(lines: list[str]) -> list[str]:
-    return [l for l in lines if MRZ_LINE.match(l)]
+def _candidates_of_length(lines: list[str], target_len: int) -> list[str]:
+    """Lignes dont la longueur est proche de `target_len` ET qui contiennent assez de '<' —
+    un texte de recto (nom imprimé, mentions...) n'a normalement jamais de '<' ; exiger les
+    deux critères ensemble élimine presque tous les faux positifs qu'un simple gabarit de
+    longueur/charset laissait passer (cf. bug où du texte du recto était pris pour la MRZ)."""
+    out = []
+    for l in lines:
+        if not MRZ_CHARSET.match(l):
+            continue
+        if abs(len(l) - target_len) > LEN_TOLERANCE:
+            continue
+        if l.count("<") < MIN_FILL_CHARS:
+            continue
+        out.append(l)
+    return out
 
 
 def mrz_date(raw: str, *, is_expiry: bool = False) -> Optional[str]:
@@ -69,15 +90,13 @@ def parse_names(field: str) -> tuple[str, str]:
 
 def parse_td1(lines: list[str]) -> dict:
     """CNI / carte de séjour / carte consulaire — 3 lignes de 30 caractères, rôle fixé par
-    la position (haut → bas) : 1=document, 2=biodata, 3=noms. `lines` doit déjà être trié
-    de haut en bas (cf. ocr_lines) — on ne se fie plus au contenu seul ('<<' peut apparaître
-    en fin de ligne 1 ou 2 à cause du remplissage)."""
+    la position (haut → bas) : 1=document, 2=biodata, 3=noms."""
     out: dict = {}
     if len(lines) < 3:
         return out
     _line1, line2, line3 = lines[-3], lines[-2], lines[-1]
 
-    surname, given = parse_names(line3.ljust(30, "<"))
+    surname, given = parse_names(line3.ljust(TD1_LEN, "<"))
     if surname:
         out["last_name"] = surname
     if given:
@@ -125,20 +144,22 @@ def parse_td3(lines: list[str]) -> dict:
 
 def extract_from_image(content: bytes, document_type: str, *, label: str) -> dict:
     lines = ocr_lines(content)
-    candidates = find_mrz_candidates(lines)
-    print(f"[diaspora-ocr] {label}: {len(lines)} lignes OCR, {len(candidates)} candidate(s) MRZ")
-    print(f"[diaspora-ocr] {label} lignes brutes: {lines}")
-    print(f"[diaspora-ocr] {label} candidats MRZ: {candidates}")
+    log(f"[diaspora-ocr] {label}: {len(lines)} ligne(s) OCR brute(s) : {lines}")
 
-    if document_type == "PASSEPORT" and len(candidates) >= 2:
-        parsed = parse_td3(candidates[-2:])
-    elif len(candidates) >= 3:
-        parsed = parse_td1(candidates[-3:])
-    elif len(candidates) == 2:
-        parsed = parse_td3(candidates)
+    td1_candidates = _candidates_of_length(lines, TD1_LEN)
+    td3_candidates = _candidates_of_length(lines, TD3_LEN)
+    log(f"[diaspora-ocr] {label}: candidats TD1 (~{TD1_LEN}c, avec '<') : {td1_candidates}")
+    log(f"[diaspora-ocr] {label}: candidats TD3 (~{TD3_LEN}c, avec '<') : {td3_candidates}")
+
+    if document_type == "PASSEPORT" and len(td3_candidates) >= 2:
+        parsed = parse_td3(td3_candidates[-2:])
+    elif len(td1_candidates) >= 3:
+        parsed = parse_td1(td1_candidates[-3:])
+    elif len(td3_candidates) >= 2:
+        parsed = parse_td3(td3_candidates[-2:])
     else:
         parsed = {}
-    print(f"[diaspora-ocr] {label} champs extraits: {parsed}")
+    log(f"[diaspora-ocr] {label}: champs extraits : {parsed}")
     return parsed
 
 
@@ -155,11 +176,11 @@ async def extract(
         try:
             parsed = extract_from_image(content, document_type, label=label)
         except Exception as e:
-            print(f"[diaspora-ocr] {label}: échec OCR — {e}")
+            log(f"[diaspora-ocr] {label}: échec OCR — {e}")
             parsed = {}
         for k, v in parsed.items():
             fields.setdefault(k, v)
-    print(f"[diaspora-ocr] résultat final fusionné: {fields}")
+    log(f"[diaspora-ocr] résultat final fusionné : {fields}")
     return fields
 
 

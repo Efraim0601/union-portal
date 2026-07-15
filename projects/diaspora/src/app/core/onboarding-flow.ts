@@ -91,7 +91,7 @@ export const PARTICULIER_ONBOARDING_STEPS: OnboardingStep[] = [
       'identity_document_type', 'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',
       'profession', 'income_type', 'income_range',
       'activity_sector', 'activity_subsector',
-      'income_currency', 'is_pep', 'pep_details',
+      'income_currency',
     ],
   },
   {

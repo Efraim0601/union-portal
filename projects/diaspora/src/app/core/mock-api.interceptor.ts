@@ -31,8 +31,17 @@ export const mockApiInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
       console.info(`[mock-api][debug] erreur interceptée pour ${req.method} ${req.url}, statut ${err.status}`);
-      const mocked = buildMockResponse(req.method, req.url, req.body);
-      if (!mocked) {
+      let mocked: unknown | null;
+      try {
+        mocked = buildMockResponse(req.method, req.url, req.body, req.headers.get('Authorization'));
+      } catch (mockErr) {
+        if (mockErr instanceof MockUnauthorized) {
+          console.info(`[mock-api] ${req.method} ${req.url} → 401 simulé (${mockErr.message})`);
+          return throwError(() => new HttpErrorResponse({ status: 401, url: req.url, error: { message: mockErr.message } }));
+        }
+        throw mockErr;
+      }
+      if (mocked == null) {
         console.info(`[mock-api][debug] aucune réponse simulée trouvée pour ${req.method} ${req.url}`);
         return throwError(() => err);
       }
@@ -42,11 +51,29 @@ export const mockApiInterceptor: HttpInterceptorFn = (req, next) => {
   );
 };
 
+/** Signale un échec d'auth simulé (identifiants invalides / token manquant) — distinct d'un
+ *  simple "pas de mock pour cette route", qui lui laisse remonter l'erreur réseau d'origine. */
+class MockUnauthorized extends Error {}
+
+// Identifiants de dev UNIQUEMENT — cf. mock-api-only côté isLocalDevServer(), jamais actif en
+// prod/Docker. À remplacer par un vrai flux d'auth backend avant toute mise en production.
+const ADMIN_MOCK_CREDENTIALS = { email: 'admin@diaspora.local', password: 'Diaspora-Admin-2026!' };
+const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+
 let mockSessionCounter = 0;
 let mockApplicationCounter = 0;
 
-function buildMockResponse(method: string, url: string, body: unknown): unknown | null {
+function buildMockResponse(method: string, url: string, body: unknown, authHeader: string | null): unknown | null {
   const path = url.split('/api/')[1] ?? '';
+
+  // ---- Session admin (/admin/parametrage) ----
+  if (method === 'POST' && path === 'admin/login') {
+    const { email, password } = (body ?? {}) as { email?: string; password?: string };
+    if (email === ADMIN_MOCK_CREDENTIALS.email && password === ADMIN_MOCK_CREDENTIALS.password) {
+      return { token: `mock-admin-${Date.now()}`, expires_at: new Date(Date.now() + ADMIN_TOKEN_TTL_MS).toISOString() };
+    }
+    throw new MockUnauthorized('Identifiants invalides');
+  }
 
   // ---- Référentiels ----
   if (method === 'GET' && path === 'countries/active') return MOCK_COUNTRIES;
@@ -54,12 +81,17 @@ function buildMockResponse(method: string, url: string, body: unknown): unknown 
   if (method === 'GET' && path === 'agencies/active') return MOCK_AGENCIES;
   if (method === 'GET' && path.startsWith('subsectors/')) return [];
 
-  // ---- Listes paramétrables (admin) : persistées en localStorage tant que le vrai backend
-  //      n'expose pas ces routes — cf. buildMockResponse ci-dessous et LOOKUP_DEFAULTS. ----
+  // ---- Listes paramétrables (admin) : lecture publique (le formulaire d'onboarding en a besoin
+  //      pour ses listes déroulantes), écriture réservée aux sessions admin authentifiées
+  //      (cf. adminTokenInterceptor qui pose l'en-tête Authorization). Persistées en localStorage
+  //      tant que le vrai backend n'expose pas ces routes — cf. LOOKUP_DEFAULTS plus bas. ----
   if (path.startsWith('lookups/')) {
     const kind = path.replace('lookups/', '');
     if (method === 'GET') return readLookup(kind);
-    if (method === 'PUT') return writeLookup(kind, body);
+    if (method === 'PUT') {
+      if (!authHeader) throw new MockUnauthorized('Authentification requise pour modifier ces listes.');
+      return writeLookup(kind, body);
+    }
   }
 
   // ---- Pré-onboarding : OTP WhatsApp ----

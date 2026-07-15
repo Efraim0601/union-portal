@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes as diasporaRoutes } from './app.routes';
 import { mockApiInterceptor } from './core/mock-api.interceptor';
+import { adminTokenInterceptor } from './core/admin-token.interceptor';
 
 /**
  * Routes exposées au HOST via Native Federation ('./Routes').
@@ -11,7 +12,7 @@ import { mockApiInterceptor } from './core/mock-api.interceptor';
 export const routes: Routes = [
   {
     path: '',
-    providers: [provideHttpClient(withInterceptors([mockApiInterceptor]))],
+    providers: [provideHttpClient(withInterceptors([adminTokenInterceptor, mockApiInterceptor]))],
     children: diasporaRoutes,
   },
 ];

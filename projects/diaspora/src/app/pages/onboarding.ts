@@ -248,7 +248,7 @@ export class DiasporaOnboardingPage {
   private fundsOrigins = signal<LookupOption[]>([]);
   private accountObjects = signal<LookupOption[]>([]);
   readonly packages = signal<PackageOffer[]>([]);
-  readonly model = signal<Partial<ApplicationCreate>>({ client_type: 'PARTICULIER', is_pep: false });
+  readonly model = signal<Partial<ApplicationCreate>>({ client_type: 'PARTICULIER' });
   /** Survit à la destruction/recréation des étapes documents/biométrie lors de la navigation (@switch). */
   readonly docState = signal<DocumentsStepState>(EMPTY_DOCUMENTS_STATE);
   readonly bioState = signal<BiometricsStepState>(EMPTY_BIOMETRICS_STATE);

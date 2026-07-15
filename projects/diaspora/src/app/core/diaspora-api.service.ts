@@ -183,6 +183,11 @@ export class DiasporaApi {
     return this.http.put<PackageOffer[]>(`${this.base}/lookups/packages`, list);
   }
 
+  // ---- Session admin (protège /admin/parametrage — cf. core/admin-auth.ts) ----
+  adminLogin(email: string, password: string): Observable<{ token: string; expires_at: string }> {
+    return this.http.post<{ token: string; expires_at: string }>(`${this.base}/admin/login`, { email, password });
+  }
+
   // ---- Paiements (Mastercard gateway) ----
   initiatePackagePayment(applicationReference: string): Observable<unknown> {
     return this.http.post(`${this.base}/payments/package/initiate/${applicationReference}`, {});

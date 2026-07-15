@@ -1,5 +1,6 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { siblingUrl } from '../core/nav';
 
 /**
  * Hub de services — reproduit la page d'accueil de l'app diaspora-onboarding
@@ -12,6 +13,12 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
  *   • Souscrire une carte   -> /promote/subscribe     (funnel produit promote)
  *   • Recharger ma carte    -> /promote/recharge      (recharge promote)
  *   • Suivre ma demande     -> /diaspora/status
+ *
+ * Les liens internes à diaspora (home/onboarding/status) sont résolus dynamiquement via
+ * `diasporaBase` (cf. siblingUrl) au lieu du préfixe `/diaspora` codé en dur : ce dernier ne
+ * pointe nulle part quand diaspora est servi seul (`ng serve diaspora`, sans le préfixe de
+ * montage posé par le shell) — cf. NG04002 déjà documenté sur onboarding-welcome.ts/onboarding.ts.
+ * Les liens `/promote/...` restent en dur : diaspora seul ne peut de toute façon pas les résoudre.
  */
 @Component({
   selector: 'diaspora-home',
@@ -22,7 +29,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     <div class="hub">
       <!-- ═══════════ Topbar ═══════════ -->
       <header class="topbar">
-        <a routerLink="/diaspora/home" class="brand">
+        <a [routerLink]="diasporaBase + '/home'" class="brand">
           <span class="brand-mark">A</span>
           <span class="brand-txt">
             <span class="brand-title">Portail d'onboarding client</span>
@@ -30,11 +37,11 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
           </span>
         </a>
         <nav class="topnav" aria-label="Menu des services">
-          <a routerLink="/diaspora/home" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Accueil</a>
-          <a routerLink="/diaspora/onboarding" routerLinkActive="active">Ouverture de compte</a>
+          <a [routerLink]="diasporaBase + '/home'" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Accueil</a>
+          <a [routerLink]="diasporaBase + '/onboarding'" routerLinkActive="active">Ouverture de compte</a>
           <a routerLink="/promote/subscribe" routerLinkActive="active">Souscription produit</a>
           <a routerLink="/promote/recharge" routerLinkActive="active">Recharge de carte</a>
-          <a routerLink="/diaspora/status" routerLinkActive="active">Suivre ma demande</a>
+          <a [routerLink]="diasporaBase + '/status'" routerLinkActive="active">Suivre ma demande</a>
         </nav>
         <a routerLink="/promote/login" class="staff-access" title="Connexion des collaborateurs (agents, manager, admin…)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
@@ -81,7 +88,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
                 <h4>Démarrer une ouverture de compte à distance</h4>
                 <p>Préparez une demande d'ouverture de compte avec les informations et documents nécessaires.</p>
               </div>
-              <a class="btn-primary" routerLink="/diaspora/onboarding">
+              <a class="btn-primary" [routerLink]="diasporaBase + '/onboarding'">
                 Créer un compte
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
               </a>
@@ -258,4 +265,8 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     }
   `],
 })
-export class DiasporaHomePage {}
+export class DiasporaHomePage {
+  private router = inject(Router);
+  /** Préfixe de montage déduit dynamiquement (cf. commentaire de classe) — '' en standalone, '/diaspora' sous le shell. */
+  readonly diasporaBase = siblingUrl(this.router, '/home', '');
+}

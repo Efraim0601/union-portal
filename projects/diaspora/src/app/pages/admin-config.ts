@@ -1,7 +1,9 @@
 import { Component, ChangeDetectionStrategy, WritableSignal, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { OnbSectionCard } from '../ui/section-card';
 import { OnbFormField, OnbInput, OnbSelect, OnbCheckbox } from '../ui/form-field';
 import { DiasporaApi } from '../core/diaspora-api.service';
+import { AdminAuth } from '../core/admin-auth';
 import { LookupKind, LookupOption, PackageOffer, Subsector } from '../core/application.model';
 
 interface LookupSection {
@@ -28,21 +30,32 @@ const CURRENCIES = ['XAF', 'EUR', 'USD'];
   template: `
     <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;">
       <div style="max-width:900px;margin:0 auto;padding:32px 20px 60px;">
-        <div style="margin-bottom:20px;">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1.8px;color:#C8102E;text-transform:uppercase;margin-bottom:6px;">
-            Diaspora · Paramétrage admin
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:16px;">
+          <div>
+            <div style="font-size:10px;font-weight:700;letter-spacing:1.8px;color:#C8102E;text-transform:uppercase;margin-bottom:6px;">
+              Diaspora · Paramétrage admin
+            </div>
+            <h1 style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;font-weight:500;color:#151821;letter-spacing:-0.5px;margin:0;">
+              Listes & formules du formulaire
+            </h1>
           </div>
-          <h1 style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;font-weight:500;color:#151821;letter-spacing:-0.5px;margin:0;">
-            Listes & formules du formulaire
-          </h1>
+          <button type="button" (click)="logout()" style="flex:0 0 auto;padding:9px 14px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;border-radius:8px;cursor:pointer;font-size:12.5px;">
+            Se déconnecter
+          </button>
         </div>
 
-        <div style="padding:12px 16px;border-radius:8px;background:rgba(200,16,46,0.06);border:1px solid rgba(200,16,46,0.2);margin-bottom:24px;">
-          <p style="font-size:12px;color:#8a0d24;line-height:1.5;margin:0;">
-            ⚠ Page non protégée par une authentification — aucune couche admin/permissions n'existe encore dans ce
-            projet pour l'app diaspora. À restreindre (réseau, reverse-proxy ou auth) avant toute mise en production.
-          </p>
-        </div>
+        @if (sessionError()) {
+          <div style="padding:12px 16px;border-radius:8px;background:rgba(200,16,46,0.06);border:1px solid rgba(200,16,46,0.2);margin-bottom:24px;">
+            <p style="font-size:12px;color:#8a0d24;line-height:1.5;margin:0;">{{ sessionError() }}</p>
+          </div>
+        } @else {
+          <div style="padding:12px 16px;border-radius:8px;background:rgba(20,20,30,0.04);border:1px solid rgba(20,20,30,0.08);margin-bottom:24px;">
+            <p style="font-size:12px;color:#6B7280;line-height:1.5;margin:0;">
+              Session admin (connexion mockée en dev — cf. core/admin-auth.ts — tant qu'aucun vrai backend
+              d'authentification n'est branché pour ce projet).
+            </p>
+          </div>
+        }
 
         @for (section of lookupSections; track section.kind) {
           <onb-section-card [title]="section.title" [subtitle]="section.subtitle">
@@ -165,7 +178,10 @@ const CURRENCIES = ['XAF', 'EUR', 'USD'];
 })
 export class DiasporaAdminConfigPage {
   private api = inject(DiasporaApi);
+  private auth = inject(AdminAuth);
+  private router = inject(Router);
   readonly currencies = CURRENCIES;
+  sessionError = signal<string | null>(null);
 
   sectors = signal<LookupOption[]>([]);
   incomeRanges = signal<LookupOption[]>([]);
@@ -205,6 +221,21 @@ export class DiasporaAdminConfigPage {
     this.savedTimer = setTimeout(() => this.savedKind.set(null), 2000);
   }
 
+  /** Session expirée/invalide pendant l'édition (401 sur une écriture) : on renvoie vers la connexion. */
+  private handleSaveError(err: unknown): void {
+    this.savingKind.set(null);
+    if ((err as { status?: number })?.status === 401) {
+      this.auth.logout();
+      this.sessionError.set('Session expirée — reconnectez-vous pour continuer.');
+      this.router.navigate(['/admin/login'], { queryParams: { returnUrl: '/admin/parametrage' } });
+    }
+  }
+
+  logout(): void {
+    this.auth.logout();
+    this.router.navigateByUrl('/admin/login');
+  }
+
   addRow(rows: WritableSignal<LookupOption[]>): void {
     rows.update((list) => [...list, { code: '', name: '' }]);
   }
@@ -218,7 +249,7 @@ export class DiasporaAdminConfigPage {
     this.savingKind.set(section.kind);
     this.api.saveLookup(section.kind, section.rows()).subscribe({
       next: () => { this.savingKind.set(null); this.flashSaved(section.kind); },
-      error: () => this.savingKind.set(null),
+      error: (err) => this.handleSaveError(err),
     });
   }
 
@@ -235,7 +266,7 @@ export class DiasporaAdminConfigPage {
     this.savingKind.set('subsectors');
     this.api.saveLookupSubsectors(this.subsectors()).subscribe({
       next: () => { this.savingKind.set(null); this.flashSaved('subsectors'); },
-      error: () => this.savingKind.set(null),
+      error: (err) => this.handleSaveError(err),
     });
   }
 
@@ -270,7 +301,7 @@ export class DiasporaAdminConfigPage {
     this.savingKind.set('packages');
     this.api.savePackages(this.packagesSig()).subscribe({
       next: () => { this.savingKind.set(null); this.flashSaved('packages'); },
-      error: () => this.savingKind.set(null),
+      error: (err) => this.handleSaveError(err),
     });
   }
 }

@@ -79,16 +79,12 @@ export interface ApplicationCreate {
   selected_package_payment_required?: boolean | null;
   account_purpose?: string | null;
 
-  is_pep: boolean;
-  pep_details?: string | null;
-
   consent_accepted?: boolean | null;
 }
 
-export interface ApplicationResponse extends Omit<ApplicationCreate, 'is_pep'> {
+export interface ApplicationResponse extends ApplicationCreate {
   id: number;
   reference: string;
-  is_pep: boolean;
 }
 
 /** Référentiels (endpoints /api/countries, /api/nationalities, /api/subsectors, /api/agencies). */
