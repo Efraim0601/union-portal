@@ -8,6 +8,7 @@ import {
   createOtpSession, getOtpSession, incrementOtpAttempts, markOtpVerified,
   saveDocument, createApplication, getApplicationById, getApplicationByReference,
   getApplicationByEmail, getApplicationByContact, createEnterpriseApplication,
+  listAgencies, replaceAgencies, seedAgenciesIfEmpty,
   UPLOADS_DIR,
 } from './db.js';
 
@@ -98,15 +99,25 @@ const NATIONALITIES = [
   { code: 'CM', label: 'Camerounaise' }, { code: 'FR', label: 'Française' }, { code: 'GA', label: 'Gabonaise' },
   { code: 'US', label: 'Américaine' }, { code: 'BE', label: 'Belge' }, { code: 'CI', label: 'Ivoirienne' },
 ];
-const AGENCIES = [
+// Amorce de la table `agencies` (SQLite) au premier démarrage seulement — modifiable ensuite
+// via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ.
+seedAgenciesIfEmpty([
   { code: 'YDE01', name: 'Agence Yaoundé Centre', city: 'Yaoundé' },
   { code: 'DLA01', name: 'Agence Douala Akwa', city: 'Douala' },
   { code: 'PAR01', name: 'Agence Paris', city: 'Paris' },
-];
+]);
 
 app.get('/api/countries/active', (_req, res) => res.json(COUNTRIES));
 app.get('/api/nationalities/active', (_req, res) => res.json(NATIONALITIES));
-app.get('/api/agencies/active', (_req, res) => res.json(AGENCIES));
+app.get('/api/agencies/active', (_req, res) => res.json(listAgencies()));
+app.put('/api/agencies/active', (req, res) => {
+  // Même niveau de protection que les autres listes admin (cf. mock-api.interceptor.ts côté
+  // front) : présence d'un Authorization Bearer, pas de vérification cryptographique du token —
+  // à durcir quand une vraie session admin backend existera.
+  if (!req.headers.authorization) return res.status(401).json({ error: 'Authentification requise.' });
+  const list = Array.isArray(req.body) ? req.body : [];
+  res.json(replaceAgencies(list));
+});
 app.get('/api/subsectors/by-sector/:code', (_req, res) => res.json([]));
 app.get('/api/subsectors/grouped', (_req, res) => res.json({}));
 

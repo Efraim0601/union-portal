@@ -65,6 +65,12 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id);
   CREATE INDEX IF NOT EXISTS idx_documents_application ON documents(application_id);
+
+  CREATE TABLE IF NOT EXISTS agencies (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    city TEXT
+  );
 `);
 
 const now = () => Date.now();
@@ -171,6 +177,31 @@ function rowToApplication(row) {
     created_at: new Date(row.created_at).toISOString(),
     updated_at: new Date(row.updated_at).toISOString(),
   };
+}
+
+// ---- Référentiel agences (paramétrable via l'interface admin diaspora) ----
+export function listAgencies() {
+  return db.prepare(`SELECT code, name, city FROM agencies ORDER BY name`).all();
+}
+
+export function replaceAgencies(list) {
+  db.exec('BEGIN');
+  try {
+    db.prepare(`DELETE FROM agencies`).run();
+    const ins = db.prepare(`INSERT INTO agencies (code, name, city) VALUES (?, ?, ?)`);
+    for (const a of list) ins.run(String(a.code ?? ''), String(a.name ?? ''), a.city ? String(a.city) : null);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return listAgencies();
+}
+
+/** Amorce la table au premier démarrage seulement — n'écrase jamais des agences déjà saisies. */
+export function seedAgenciesIfEmpty(defaults) {
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM agencies`).get();
+  if (n === 0) replaceAgencies(defaults);
 }
 
 // ---- Dossiers entreprise ----
