@@ -176,6 +176,12 @@ export class Api {
   createSelfSubscription(req: CreateSubscriptionRequest): Observable<SubscriptionDto> {
     return this.http.post<SubscriptionDto>(`${this.base}/subscriptions/self`, req);
   }
+  /** Souscription assistée : créée par un commercial/caissier connecté. Le backend attribue la
+   *  vente au vendeur (agentId = principal) — d'où sa remontée dans les stats de son équipe
+   *  (chef d'équipe → superviseur → manager). Le parcours public utilise `createSelfSubscription`. */
+  createAssistedSubscription(req: CreateSubscriptionRequest): Observable<SubscriptionDto> {
+    return this.http.post<SubscriptionDto>(`${this.base}/subscriptions`, req);
+  }
   paySubscription(ref: string, outcome: string, reason?: string): Observable<SubscriptionDto> {
     return this.http.patch<SubscriptionDto>(`${this.base}/subscriptions/${ref}/pay`, { outcome, reason });
   }

@@ -77,7 +77,10 @@ export class StaffSidebar {
       out.push({ id: 'manager', icon: '🗂️', label: t('side_manager'), route: '/manager' });
       out.push({ id: 'team', icon: '👥', label: t('side_team'), route: '/team' });
     }
-    if (this.auth.hasRole('SUPERVISEUR')) out.push({ id: 'supervision', icon: '🔎', label: t('side_supervision'), route: '/supervision' });
+    // Stats d'équipe (sous-arbre du leader) : superviseur ET chef d'équipe. Sans ce lien, le chef
+    // d'équipe n'avait aucune page de stats (il atterrissait sur /manager → onglet catalogue réservé
+    // à l'admin/manager, en 403). Le backend borne déjà les données au sous-arbre de l'appelant.
+    if (this.auth.hasRole('SUPERVISEUR', 'CHEF_EQUIPE')) out.push({ id: 'supervision', icon: '🔎', label: t('side_supervision'), route: '/supervision' });
     if (this.auth.hasRole('CASHIER')) out.push({ id: 'cashier', icon: '💵', label: t('side_cashier'), route: '/cashier' });
     if (this.auth.hasRole('PRINT_AGENT')) out.push({ id: 'print', icon: '🖨️', label: t('side_print'), route: '/print' });
     if (this.auth.hasRole('COLLECTEUR')) out.push({ id: 'collecte', icon: '📦', label: t('side_collecte'), route: '/collecte' });

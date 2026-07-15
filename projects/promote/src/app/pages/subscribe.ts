@@ -2,6 +2,7 @@ import { Component, ElementRef, OnDestroy, computed, effect, inject, signal, vie
 import { Router } from '@angular/router';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Api } from '../core/api';
+import { Auth } from '../core/auth';
 import { I18n } from '../core/i18n';
 import {
   AgencyDto, ConfigDto, CreateSubscriptionRequest, ProductCategoryDto, ProductComponentDto, ProductDto,
@@ -579,7 +580,13 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(n) + ' FCFA';
 export class SubscribePage implements OnDestroy {
   protected i18n = inject(I18n);
   protected api = inject(Api);
+  private auth = inject(Auth);
   private router = inject(Router);
+
+  /** Vrai quand un vendeur (commercial/caissier) est connecté sur cette page : la vente doit alors
+   *  lui être attribuée (parcours assisté) pour remonter dans les stats de son équipe. Un client
+   *  anonyme du parcours public reste sur la souscription « self ». */
+  private isSeller = () => this.auth.hasRole('AGENT', 'CASHIER');
 
   /** Timer du suivi de paiement mobile money (polling du statut backend). */
   private pollHandle: ReturnType<typeof setInterval> | null = null;
@@ -1013,7 +1020,13 @@ export class SubscribePage implements OnDestroy {
 
   submit() {
     this.submitting.set(true);
-    this.api.createSelfSubscription(this.buildRequest()).subscribe({
+    // Vendeur connecté → parcours assisté (agentId = vendeur, la vente remonte dans son équipe) ;
+    // sinon parcours public « self » (attribution éventuelle via le téléphone du parrain).
+    const req = this.buildRequest();
+    const call = this.isSeller()
+      ? this.api.createAssistedSubscription(req)
+      : this.api.createSelfSubscription(req);
+    call.subscribe({
       next: (sub) => {
         this.submitting.set(false);
         this.createdRef.set(sub.ref);
