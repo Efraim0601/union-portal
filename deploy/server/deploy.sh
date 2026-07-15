@@ -201,6 +201,10 @@ verify_all() {
   #   sonde donc son API via le portail HTTPS, pas HTTP.
   probe "proxy diaspora /api/* (via HTTPS)" \
         "https://localhost:${UNION_SSL_PORT}${DIASPORA_PROXY_PROBE:-/api/backoffice/mastercard/config-status}"
+  # Back-office diaspora (pages server-rendered) exposé via le gateway : la page de
+  #   login doit répondre à travers le proxy (et non retomber sur le shell Angular).
+  probe "proxy back-office /backoffice/login (via HTTPS)" \
+        "https://localhost:${UNION_SSL_PORT}/backoffice/login"
 
   # Le paiement doit bien passer par le Hub (et non un provider simulé).
   local prov
