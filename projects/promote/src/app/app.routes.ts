@@ -5,6 +5,7 @@ export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'home' },
   { path: 'home', loadComponent: () => import('./pages/home').then((m) => m.HomePage) },
   { path: 'login', loadComponent: () => import('./pages/login').then((m) => m.LoginPage) },
+  { path: 'partners', loadComponent: () => import('./pages/partners').then((m) => m.PartnersPage) },
   { path: 'set-password', loadComponent: () => import('./pages/set-password').then((m) => m.SetPasswordPage) },
   {
     path: 'change-password',

@@ -36,9 +36,9 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
           <a routerLink="/promote/recharge" routerLinkActive="active">Recharge de carte</a>
           <a routerLink="/diaspora/status" routerLinkActive="active">Suivre ma demande</a>
         </nav>
-        <a routerLink="/promote/login" class="staff-access" title="Connexion des collaborateurs (agents, manager, admin…)">
+        <a routerLink="/promote/partners" class="staff-access" title="Portails partenaires : Gestion de vos encaissements, Portail vente produit">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-          Espace collaborateur
+          Espace partenaires
         </a>
       </header>
 
