@@ -45,21 +45,36 @@ export class FaceMesh {
   }
 
   private async init(): Promise<boolean> {
+    let vision: any;
+    let fileset: any;
     try {
       // Dynamic import: the ~heavy MediaPipe bundle is only fetched when smart capture is actually used.
-      const vision = await import('@mediapipe/tasks-vision');
-      const fileset = await vision.FilesetResolver.forVisionTasks('/mediapipe/wasm');
-      this.landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: '/mediapipe/face_landmarker.task', delegate: 'GPU' },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-      });
-      return true;
+      vision = await import('@mediapipe/tasks-vision');
+      fileset = await vision.FilesetResolver.forVisionTasks('/mediapipe/wasm');
     } catch (e) {
-      console.warn('[face-mesh] disabled — could not initialise FaceLandmarker', e);
+      console.warn('[face-mesh] disabled — could not load MediaPipe runtime/WASM', e);
       this.landmarker = null;
       return false;
     }
+
+    // Le delegate GPU (WebGL) échoue sur pas mal de navigateurs mobiles / configs sans WebGL2 :
+    // dans ce cas la détection ne s'initialisait pas du tout (selfie sans cadre ni capture auto).
+    // On tente donc le GPU puis on retombe sur le CPU, qui marche partout (un peu plus lent).
+    for (const delegate of ['GPU', 'CPU'] as const) {
+      try {
+        this.landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: '/mediapipe/face_landmarker.task', delegate },
+          runningMode: 'VIDEO',
+          numFaces: 1,
+        });
+        console.info(`[face-mesh] FaceLandmarker prêt (delegate ${delegate})`);
+        return true;
+      } catch (e) {
+        console.warn(`[face-mesh] échec init delegate ${delegate}`, e);
+      }
+    }
+    this.landmarker = null;
+    return false;
   }
 
   /**

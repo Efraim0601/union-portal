@@ -42,3 +42,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# Modèle OCR latin (téléchargé sur le serveur, non versionné ici)
+server/diaspora-ocr/ocr_models/
