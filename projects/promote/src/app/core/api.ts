@@ -37,6 +37,7 @@ import {
   PromotionDto,
   PromotionRequest,
   ProfileDto,
+  ProspectDto,
   RechargeDto,
   GeneralSettingsDto,
   GeneralSettingsUpdate,
@@ -176,6 +177,10 @@ export class Api {
   createSelfSubscription(req: CreateSubscriptionRequest): Observable<SubscriptionDto> {
     return this.http.post<SubscriptionDto>(`${this.base}/subscriptions/self`, req);
   }
+  /** Assisted subscription — created by a logged-in staff member; attributed to them (agentId = principal). */
+  createAssistedSubscription(req: CreateSubscriptionRequest): Observable<SubscriptionDto> {
+    return this.http.post<SubscriptionDto>(`${this.base}/subscriptions`, req);
+  }
   paySubscription(ref: string, outcome: string, reason?: string): Observable<SubscriptionDto> {
     return this.http.patch<SubscriptionDto>(`${this.base}/subscriptions/${ref}/pay`, { outcome, reason });
   }
@@ -186,6 +191,18 @@ export class Api {
   // ---- recharge (parcours public) ----
   createRecharge(req: CreateRechargeRequest): Observable<RechargeDto> {
     return this.http.post<RechargeDto>(`${this.base}/recharges`, req);
+  }
+  /** Assisted recharge — created by a logged-in staff member; attributed to them (agentId = principal). */
+  createAssistedRecharge(req: CreateRechargeRequest): Observable<RechargeDto> {
+    return this.http.post<RechargeDto>(`${this.base}/recharges/assisted`, req);
+  }
+
+  // ---- prospects (souscriptions initiées mais non finalisées, à relancer) ----
+  prospects(): Observable<ProspectDto[]> {
+    return this.http.get<ProspectDto[]>(`${this.base}/prospects`);
+  }
+  markProspectContacted(ref: string): Observable<ProspectDto> {
+    return this.http.patch<ProspectDto>(`${this.base}/prospects/${ref}/contacted`, {});
   }
   payRecharge(ref: string, outcome: string, reason?: string): Observable<RechargeDto> {
     return this.http.patch<RechargeDto>(`${this.base}/recharges/${ref}/pay`, { outcome, reason });
@@ -204,10 +221,18 @@ export class Api {
   searchSubscriptions(q: string): Observable<SubscriptionDto[]> {
     return this.http.get<SubscriptionDto[]>(`${this.base}/subscriptions/search`, { params: { q } });
   }
+  /** Search recharges by ref, holder name, PAN or phone (management transaction console). */
+  searchRecharges(q: string): Observable<RechargeDto[]> {
+    return this.http.get<RechargeDto[]>(`${this.base}/recharges/search`, { params: { q } });
+  }
   /** Fetch a captured KYC document as a Blob (the token interceptor adds the Authorization header,
    *  which a plain <img src> cannot). kind = selfie | cni-recto | cni-verso | sara-receipt. */
   subscriptionImage(ref: string, kind: string): Observable<Blob> {
     return this.http.get(`${this.base}/subscriptions/${ref}/image/${kind}`, { responseType: 'blob' });
+  }
+  /** Fetch a recharge image as a Blob. kind = sara-receipt | recharge-evidence. */
+  rechargeImage(ref: string, kind: string): Observable<Blob> {
+    return this.http.get(`${this.base}/recharges/${ref}/image/${kind}`, { responseType: 'blob' });
   }
 
   // ---- cashier ----
@@ -328,9 +353,11 @@ export class Api {
   teamOrg(): Observable<OrgViewDto> {
     return this.http.get<OrgViewDto>(`${this.base}/team/org`);
   }
-  /** (Re)assign the hierarchy parent of one/several members. parentId null → detach. */
-  assignTeam(parentId: string | null, userIds: string[]): Observable<{ assigned: number; skipped: number }> {
-    return this.http.patch<{ assigned: number; skipped: number }>(`${this.base}/team/assign`, { parentId, userIds });
+  /** (Re)assign the hierarchy parent of one/several members. parentId null → detach.
+   *  detachReports=true → move ONLY the listed users, sending each one's direct reports back to the
+   *  pool (drag-and-drop of a single person must not drag its sub-team along). */
+  assignTeam(parentId: string | null, userIds: string[], detachReports = false): Observable<{ assigned: number; skipped: number; detached: number }> {
+    return this.http.patch<{ assigned: number; skipped: number; detached: number }>(`${this.base}/team/assign`, { parentId, userIds, detachReports });
   }
   sendTeamMessage(title: string, body: string, recipientIds: string[]): Observable<unknown> {
     return this.http.post(`${this.base}/team/message`, { title, body, recipientIds });

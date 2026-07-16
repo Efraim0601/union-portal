@@ -18,6 +18,8 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n |
           <div class="kpis">
             <div class="kpi"><div class="kv">{{ hier()!.totalSubscriptions }}</div><div class="kl">{{ i18n.t('mgr_total_subs') }}</div></div>
             <div class="kpi"><div class="kv" style="color:var(--primary)">{{ money(hier()!.totalSubscriptionsAmount) }}</div><div class="kl">{{ i18n.t('mgr_total_amount') }}</div></div>
+            <div class="kpi"><div class="kv" style="color:#9333EA">{{ hier()!.totalRecharges }}</div><div class="kl">{{ i18n.t('mgr_total_recharges') }}</div></div>
+            <div class="kpi"><div class="kv" style="color:#9333EA">{{ money(hier()!.totalRechargesAmount) }}</div><div class="kl">{{ i18n.t('mgr_total_recharges_amount') }}</div></div>
             <div class="kpi"><div class="kv" style="color:#2563EB">{{ hier()!.totalCollectes }}</div><div class="kl">{{ i18n.t('mgr_total_collectes') }}</div></div>
             <div class="kpi"><div class="kv" style="color:#059669">{{ money(hier()!.totalCommissions) }}</div><div class="kl">{{ i18n.t('mgr_total_comm') }}</div></div>
           </div>
@@ -28,6 +30,7 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n |
                   <div style="min-width:0"><div style="font-size:13px;font-weight:700;color:var(--navy)">{{ m.name }}</div><div style="font-size:11px;color:var(--muted)">{{ m.role }}</div></div>
                   <div style="display:flex;gap:14px;flex-shrink:0;text-align:right">
                     <div><div style="font-size:13px;font-weight:800;color:var(--navy)">{{ m.subscriptions }}</div><div class="kl">{{ i18n.t('mgr_total_subs') }}</div></div>
+                    <div><div style="font-size:13px;font-weight:800;color:#9333EA">{{ m.recharges }}</div><div class="kl">{{ i18n.t('mgr_total_recharges') }}</div></div>
                     <div><div style="font-size:13px;font-weight:800;color:#2563EB">{{ m.collectes }}</div><div class="kl">{{ i18n.t('mgr_total_collectes') }}</div></div>
                   </div>
                 </div>

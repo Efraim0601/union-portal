@@ -200,13 +200,27 @@ export interface CreateRechargeRequest {
 }
 export interface RechargeDto {
   ref: string;
+  prenom?: string;
+  nom?: string;
   fullName: string;
   phone: string;
   pan: string;
   amount: number;
   pay: string;
+  payPhone?: string;
   payStatus: string;
   status: string;
+  hasSaraReceipt?: boolean;
+  saraRef?: string | null;
+  saraPayerPhone?: string | null;
+  saraAmount?: number | null;
+  cashCollectedBy?: string | null;
+  cashCollectedAt?: string | null;
+  fulfilled?: boolean;
+  fulfilledBy?: string | null;
+  fulfilledAt?: string | null;
+  hasEvidence?: boolean;
+  agentId?: string | null;
   createdAt: string;
   paymentMessage: string | null;
   [k: string]: unknown;
@@ -249,6 +263,8 @@ export interface AgentStats {
   paid: number;
   pending: number;
   collected: number;
+  recharges: number;
+  rechargesAmount: number;
 }
 export interface CashierStats {
   myCount: number;
@@ -353,11 +369,20 @@ export interface CommissionEntryDto {
 }
 export interface MemberStatsDto {
   id: string; name: string; role: string; subscriptions: number;
-  subscriptionsAmount: number; collectes: number; commissionTotal: number;
+  subscriptionsAmount: number; recharges: number; rechargesAmount: number;
+  collectes: number; commissionTotal: number;
 }
 export interface HierarchyStatsDto {
   scope: string; totalSubscriptions: number; totalSubscriptionsAmount: number;
+  totalRecharges: number; totalRechargesAmount: number;
   totalCollectes: number; totalCommissions: number; members: MemberStatsDto[];
+}
+export interface ProspectDto {
+  ref: string; fullName: string; phone: string; email: string;
+  region: string; ville: string; productCode: string; productLabel: string;
+  amount: number; pay: string; payStatus: string; status: string;
+  paymentMessage: string; agentId: string | null; agentName: string | null; referrerName: string | null;
+  createdAt: string; contacted: boolean; contactedBy: string | null; contactedAt: string | null;
 }
 export interface TeamMemberDto { id: string; name: string; role: string; agency: string; parentUserId: string | null; }
 /** Org view backing the drag-and-drop hierarchy builder (GET /api/team/org). */

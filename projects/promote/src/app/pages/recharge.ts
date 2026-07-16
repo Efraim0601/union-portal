@@ -1,6 +1,7 @@
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Api } from '../core/api';
+import { Auth } from '../core/auth';
 import { I18n } from '../core/i18n';
 import { ConfigDto, CreateRechargeRequest } from '../core/models';
 
@@ -129,6 +130,7 @@ export class RechargePage implements OnDestroy {
   protected i18n = inject(I18n);
   private api = inject(Api);
   private router = inject(Router);
+  private auth = inject(Auth);
 
   /** Timer du suivi de paiement mobile money (polling du statut backend). */
   private pollHandle: ReturnType<typeof setInterval> | null = null;
@@ -207,7 +209,12 @@ export class RechargePage implements OnDestroy {
       payPhone: this.momoPhone().trim() || undefined,
     };
     this.submitting.set(true);
-    this.api.createRecharge(req).subscribe({
+    // A logged-in staff member of the sales chain attributes the recharge to themselves (assisted
+    // path, agentId = principal); anonymous/public users go through the open funnel.
+    const staff = this.auth.isLoggedIn()
+      && this.auth.hasRole('AGENT', 'CASHIER', 'PRINT_AGENT', 'COLLECTEUR', 'SUPERVISEUR', 'CHEF_EQUIPE', 'MANAGER', 'ADMIN');
+    const create$ = staff ? this.api.createAssistedRecharge(req) : this.api.createRecharge(req);
+    create$.subscribe({
       next: (r) => {
         this.submitting.set(false);
         this.ref.set(r.ref);

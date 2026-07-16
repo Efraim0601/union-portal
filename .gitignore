@@ -16,6 +16,11 @@ __pycache__/
 # personnelles réelles une fois testé en conditions réelles — jamais dans git).
 server/diaspora-otp/data/
 
+# Dépôts backend clonés à la racine pour le dev local (projets git séparés,
+# NE PAS committer dans union-portal). Voir docker-compose.local.yml dans chacun.
+/promoteApp/
+/diaspora-onboarding/
+
 # Tests / couverture
 /coverage
 

@@ -276,6 +276,8 @@ const fcfa = (n: number) => new Intl.NumberFormat('fr-FR').format(Math.round(n |
               <div class="kpis">
                 <div class="kpi"><div class="kv">{{ hier()!.totalSubscriptions }}</div><div class="kl">{{ i18n.t('mgr_total_subs') }}</div></div>
                 <div class="kpi"><div class="kv" style="color:var(--primary)">{{ money(hier()!.totalSubscriptionsAmount) }}</div><div class="kl">{{ i18n.t('mgr_total_amount') }}</div></div>
+                <div class="kpi"><div class="kv" style="color:#9333EA">{{ hier()!.totalRecharges }}</div><div class="kl">{{ i18n.t('mgr_total_recharges') }}</div></div>
+                <div class="kpi"><div class="kv" style="color:#9333EA">{{ money(hier()!.totalRechargesAmount) }}</div><div class="kl">{{ i18n.t('mgr_total_recharges_amount') }}</div></div>
                 <div class="kpi"><div class="kv" style="color:#2563EB">{{ hier()!.totalCollectes }}</div><div class="kl">{{ i18n.t('mgr_total_collectes') }}</div></div>
                 <div class="kpi"><div class="kv" style="color:#059669">{{ money(hier()!.totalCommissions) }}</div><div class="kl">{{ i18n.t('mgr_total_comm') }}</div></div>
               </div>
@@ -789,7 +791,9 @@ export class ManagerPage {
     if (parentId === (dragged.parentUserId ?? null)) return; // already there → no-op
     if (parentId && this.isDescendant(dragged.id, parentId)) return; // client cycle guard
     this.busyAssign.set(true);
-    this.api.assignTeam(parentId, [dragged.id]).subscribe({
+    // Drag = move ONLY this person; its own reports go back to the pool (detachReports=true), so
+    // dropping one member never drags their sub-team along.
+    this.api.assignTeam(parentId, [dragged.id], true).subscribe({
       next: () => { this.busyAssign.set(false); this.flashAssign(); this.reloadOrg(); },
       error: () => this.busyAssign.set(false),
     });
@@ -825,7 +829,7 @@ export class ManagerPage {
   teamRollup = computed(() => {
     const o = this.org();
     const stats = this.statsById();
-    const out = new Map<string, { subs: number; amount: number; collectes: number; comm: number }>();
+    const out = new Map<string, { subs: number; amount: number; rech: number; rechAmount: number; collectes: number; comm: number }>();
     if (!o) return out;
     const childrenOf = new Map<string, TeamMemberDto[]>();
     for (const m of o.members) {
@@ -839,25 +843,28 @@ export class ManagerPage {
       const own = stats.get(id);
       const acc = {
         subs: own?.subscriptions ?? 0, amount: own?.subscriptionsAmount ?? 0,
+        rech: own?.recharges ?? 0, rechAmount: own?.rechargesAmount ?? 0,
         collectes: own?.collectes ?? 0, comm: own?.commissionTotal ?? 0,
       };
       out.set(id, acc); // set before recursing → cycle-safe
       for (const c of childrenOf.get(id) ?? []) {
         const r = rollup(c.id);
-        acc.subs += r.subs; acc.amount += r.amount; acc.collectes += r.collectes; acc.comm += r.comm;
+        acc.subs += r.subs; acc.amount += r.amount; acc.rech += r.rech; acc.rechAmount += r.rechAmount;
+        acc.collectes += r.collectes; acc.comm += r.comm;
       }
       return acc;
     };
     for (const n of [o.root, ...o.members]) rollup(n.id);
     return out;
   });
-  rollupOf(id: string) { return this.teamRollup().get(id) ?? { subs: 0, amount: 0, collectes: 0, comm: 0 }; }
-  hasRollup(id: string) { const r = this.rollupOf(id); return r.subs > 0 || r.amount > 0 || r.collectes > 0 || r.comm > 0; }
+  rollupOf(id: string) { return this.teamRollup().get(id) ?? { subs: 0, amount: 0, rech: 0, rechAmount: 0, collectes: 0, comm: 0 }; }
+  hasRollup(id: string) { const r = this.rollupOf(id); return r.subs > 0 || r.amount > 0 || r.rech > 0 || r.collectes > 0 || r.comm > 0; }
   rollupLine(id: string) {
     const r = this.rollupOf(id);
     const parts: string[] = [];
     if (r.subs > 0) parts.push(`${r.subs} ${this.i18n.t('mgr_u_subs')}`);
     if (r.amount > 0) parts.push(`${this.compactF(r.amount)} F`);
+    if (r.rech > 0) parts.push(`${r.rech} ${this.i18n.t('mgr_u_recharges')}`);
     if (r.collectes > 0) parts.push(`${r.collectes} ${this.i18n.t('mgr_u_collectes')}`);
     if (r.comm > 0) parts.push(`${this.compactF(r.comm)} ${this.i18n.t('mgr_u_comm')}`);
     return parts.join(' · ');

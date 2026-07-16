@@ -164,11 +164,13 @@ export class DashboardPage {
     const paid = s?.paid ?? this.sales().filter(isPaid).length;
     const pending = s?.pending ?? this.sales().filter(isPending).length;
     const collected = s?.collected ?? this.sales().filter((x) => x.pay === 'cash').length;
+    const recharges = s?.recharges ?? 0;
     return [
       { icon: '📋', label: this.i18n.t('kpi_total'), value: String(total), color: '#1B1B2F' },
       { icon: '✅', label: this.i18n.t('kpi_paid'), value: String(paid), color: '#059669' },
       { icon: '⏳', label: this.i18n.t('kpi_pending'), value: String(pending), color: '#D97706' },
       { icon: '💵', label: this.i18n.t('kpi_collected'), value: String(collected), color: '#2563EB' },
+      { icon: '🔄', label: this.i18n.t('kpi_recharges'), value: String(recharges), color: '#9333EA' },
     ];
   });
 
