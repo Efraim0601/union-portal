@@ -24,9 +24,14 @@ export interface DocumentsStepState {
   addressOcrFields: Partial<ApplicationCreate>;
   /** Aperçus (data URL) déjà capturés/importés, par clé de document ('IDENTITY_RECTO', 'IDENTITY_VERSO', req.key). */
   previews: Record<string, string>;
+  /** Alerte d'authenticité (garde RIB back-office / badge employé) issue de l'OCR backend. */
+  authenticityWarning: string | null;
+  /** Alerte recto/verso inversé (détection de côté côté backend). */
+  sideWarning: string | null;
 }
 export const EMPTY_DOCUMENTS_STATE: DocumentsStepState = {
   status: {}, identityType: 'CNI', identitySides: {}, ocrFields: {}, ocrExtracted: false, addressOcrFields: {}, previews: {},
+  authenticityWarning: null, sideWarning: null,
 };
 
 const OCR_FIELD_LABELS: Record<string, string> = {
@@ -79,6 +84,17 @@ const DOUBLE_SIDED_TYPES: readonly IdentityDocumentType[] = ['CNI', 'CARTE_SEJOU
             @if (identityStatus('VERSO') === 'uploading') { <p style="font-size:12px;color:#6B7280;margin-top:10px;">Envoi en cours…</p> }
             @if (identityStatus('VERSO') === 'done') { <p style="font-size:12px;color:#16A34A;margin-top:10px;">Verso reçu.</p> }
             @if (identityStatus('VERSO') === 'error') { <p style="font-size:12px;color:#C8102E;margin-top:10px;">Échec de l'envoi — vous pouvez continuer, une nouvelle tentative sera proposée plus tard.</p> }
+          }
+
+          @if (authenticityWarning()) {
+            <div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:#FDECEC;border:1px solid rgba(200,16,46,0.28);color:#8f0e15;font-size:12px;line-height:1.4;">
+              ⚠ {{ authenticityWarning() }}
+            </div>
+          }
+          @if (sideWarning()) {
+            <div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#FFF9E6;border:1px solid rgba(245,197,66,0.55);color:#8a6d00;font-size:12px;line-height:1.4;">
+              ⚠ {{ sideWarning() }}
+            </div>
           }
 
           @if (ocrExtracted()) {
@@ -134,6 +150,8 @@ export class DiasporaDocumentsStep implements OnInit {
   ocrExtracted = signal(false);
   addressOcrFields = signal<Partial<ApplicationCreate>>({});
   previews = signal<Record<string, string>>({});
+  authenticityWarning = signal<string | null>(null);
+  sideWarning = signal<string | null>(null);
 
   ngOnInit(): void {
     this.status.set(this.state.status);
@@ -143,6 +161,8 @@ export class DiasporaDocumentsStep implements OnInit {
     this.ocrExtracted.set(this.state.ocrExtracted);
     this.addressOcrFields.set(this.state.addressOcrFields);
     this.previews.set(this.state.previews);
+    this.authenticityWarning.set(this.state.authenticityWarning ?? null);
+    this.sideWarning.set(this.state.sideWarning ?? null);
   }
 
   private emitState(): void {
@@ -154,6 +174,8 @@ export class DiasporaDocumentsStep implements OnInit {
       ocrExtracted: this.ocrExtracted(),
       addressOcrFields: this.addressOcrFields(),
       previews: this.previews(),
+      authenticityWarning: this.authenticityWarning(),
+      sideWarning: this.sideWarning(),
     });
   }
 
@@ -208,6 +230,11 @@ export class DiasporaDocumentsStep implements OnInit {
     this.previews.update((p) => ({ ...p, [`IDENTITY_${side}`]: dataUrl }));
 
     if (side === 'RECTO') {
+      const rectoFile = await dataUrlToFile(dataUrl, 'identity-recto.jpg');
+      // Image de RÉFÉRENCE pour la comparaison faciale (portrait de la pièce) : envoyée
+      // à la session sous CNI_RECTO, seul emplacement « document » qu'examine le moteur
+      // face-match du backend. Non bloquant.
+      this.uploadIdentityReference('IDENTITY_RECTO', rectoFile);
       // La MRZ (nom/prénom/date de naissance/nationalité) est au verso pour une carte —
       // on attend donc le verso pour lancer l'OCR. Pour un passeport (une seule face), le
       // recto suffit (MRZ en bas de la page photo) : on lance l'extraction tout de suite.
@@ -215,8 +242,7 @@ export class DiasporaDocumentsStep implements OnInit {
         this.identitySides.update((s) => ({ ...s, RECTO: 'done' }));
         this.emitState();
       } else {
-        const file = await dataUrlToFile(dataUrl, 'identity-recto.jpg');
-        this.runExtraction(file, null);
+        this.runExtraction(rectoFile, null);
       }
       return;
     }
@@ -244,25 +270,52 @@ export class DiasporaDocumentsStep implements OnInit {
     }
   }
 
+  /** Envoie la pièce à la session comme référence face-match (best-effort, non bloquant). */
+  private uploadIdentityReference(documentKey: 'IDENTITY_RECTO' | 'IDENTITY_VERSO', file: File): void {
+    const sessionId = this.model.pre_onboarding_session_id;
+    if (!sessionId) return;
+    this.api.preOnboardingUploadDocument(sessionId, file, documentKey).subscribe({ next: () => {}, error: () => {} });
+  }
+
   private runExtraction(recto: File, verso: File | null): void {
     this.identitySides.update((s) => ({ ...s, RECTO: 'uploading' }));
     this.emitState();
-    this.api.preOnboardingExtract(recto, this.identityType(), verso ?? undefined).subscribe({
-      next: (res: any) => {
+    const sessionId = this.model.pre_onboarding_session_id ?? undefined;
+    const accountType = this.model.client_type ?? 'PARTICULIER';
+    this.api.preOnboardingExtract(recto, this.identityType(), verso ?? undefined, accountType, sessionId).subscribe({
+      next: (res) => {
         this.identitySides.update((s) => ({ ...s, RECTO: 'done' }));
-        const extracted: Partial<ApplicationCreate> = {};
-        for (const f of OCR_FIELDS) if (res?.[f] != null) (extracted as any)[f] = res[f];
-        this.ocrFields.set(extracted);
+        this.ocrFields.set({ ...res.fields });
         this.ocrExtracted.set(true);
+        this.applyAuthenticitySignals(res);
         this.emitState();
       },
       error: () => {
-        // OCR indisponible (backend séparé non branché) — l'utilisateur saisit manuellement.
+        // OCR indisponible (backend non joignable) — l'utilisateur saisit manuellement.
         this.identitySides.update((s) => ({ ...s, RECTO: 'error' }));
         this.ocrExtracted.set(true);
         this.emitState();
       },
     });
+  }
+
+  /** Remonte les signaux d'authenticité du backend en avertissements affichés. */
+  private applyAuthenticitySignals(res: {
+    documentValidation?: { status?: string; message?: string | null };
+    documentSide?: { status?: string; message?: string | null };
+  }): void {
+    const v = res.documentValidation;
+    this.authenticityWarning.set(
+      v?.status === 'DOCUMENT_TYPE_MISMATCH'
+        ? v.message ?? 'Ce document ne semble pas correspondre au type de pièce attendu.'
+        : null,
+    );
+    const s = res.documentSide;
+    this.sideWarning.set(
+      s?.status === 'SIDE_MISMATCH'
+        ? s.message ?? 'Le côté photographié ne correspond pas à celui attendu (recto/verso).'
+        : null,
+    );
   }
 
   async onCaptured(req: DocumentRequirement, dataUrl: string): Promise<void> {

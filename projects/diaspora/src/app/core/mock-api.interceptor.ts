@@ -60,7 +60,6 @@ class MockUnauthorized extends Error {}
 const ADMIN_MOCK_CREDENTIALS = { email: 'admin@diaspora.local', password: 'Diaspora-Admin-2026!' };
 const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
 
-let mockSessionCounter = 0;
 let mockApplicationCounter = 0;
 
 function buildMockResponse(method: string, url: string, body: unknown, authHeader: string | null): unknown | null {
@@ -103,40 +102,12 @@ function buildMockResponse(method: string, url: string, body: unknown, authHeade
     }
   }
 
-  // ---- Pré-onboarding : OTP WhatsApp ----
-  if (method === 'POST' && path === 'pre-onboarding/whatsapp-otp/send') {
-    return { pre_onboarding_session_id: `mock-session-${++mockSessionCounter}` };
-  }
-  if (method === 'POST' && path === 'pre-onboarding/whatsapp-otp/verify') {
-    return { pre_onboarding_session_id: `mock-session-${mockSessionCounter || 1}`, verified: true };
-  }
-
-  // ---- Pré-onboarding : OCR ----
-  if (method === 'POST' && path === 'pre-onboarding/extract') {
-    return {
-      last_name: 'MBALLA',
-      first_name: 'Jean',
-      birth_date: '1990-04-12',
-      birth_place: 'Douala',
-      nationality: 'CM',
-      identity_document_number: 'A1234567',
-      identity_document_issue_date: '2022-01-15',
-      identity_document_issue_place: 'Douala',
-    };
-  }
-
-  // ---- Pré-onboarding : OCR du plan de localisation (adresse + boîte postale si lisibles) ----
-  if (method === 'POST' && path === 'pre-onboarding/extract-address') {
-    return {
-      address_location: 'Quartier Bonapriso, Rue Njo-Njo, derrière la pharmacie du Rond-Point',
-      postal_box: 'BP 4567 Douala',
-    };
-  }
-
-  // ---- Pré-onboarding : upload de document (non-OCR, selfie, vidéo) ----
-  if (method === 'POST' && /^pre-onboarding\/[^/]+\/documents$/.test(path)) {
-    return { received: true };
-  }
+  // ---- Pré-onboarding : OCR, upload de documents, OTP & comparaison faciale ----
+  // Ces routes sont désormais servies par le VRAI backend diaspora-onboarding
+  // (POST /pre-onboarding/ocr, /save-file — qui déclenche la reconnaissance faciale —,
+  // /otp/{send,verify}). On ne les simule PLUS : en dev, si le backend est absent,
+  // ces appels échouent franchement (le parcours reste tolérant) au lieu d'être
+  // masqués par une réponse factice qui donnerait une fausse impression de KYC.
 
   // ---- Dossier particulier ----
   if (method === 'POST' && path === 'applications') {
