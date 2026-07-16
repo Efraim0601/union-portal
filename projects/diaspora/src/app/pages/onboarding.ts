@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { siblingUrl } from '../core/nav';
 import { OnbSectionCard, OnbStepNav } from '../ui/section-card';
@@ -66,8 +66,8 @@ const IDENTITY_TYPE_LABELS: Record<string, string> = {
 /** Champs préremplis en amont (pré-inscription / choix de la pièce à l'étape documents) :
  *  lecture seule une fois renseignés, pour ne pas invalider ce qui a déjà été vérifié en amont
  *  (le statut résident/non-résident et les documents requis dépendent de `residence`).
- *  Les champs venant de l'OCR (numéro/date/lieu de délivrance) restent EUX éditables — l'OCR
- *  peut se tromper et l'utilisateur doit pouvoir corriger, sans quoi une erreur de lecture
+ *  EXCEPTION : si la valeur provient de l'OCR (cf. `ocrFilledKeys`), le champ reste ÉDITABLE —
+ *  l'OCR peut se tromper et l'utilisateur doit pouvoir corriger, sans quoi une erreur de lecture
  *  bloque définitivement le champ (cf. retour terrain : valeurs fausses non corrigibles). */
 const READONLY_ONCE_FILLED = new Set(['residence', 'identity_document_type']);
 
@@ -273,6 +273,9 @@ export class DiasporaOnboardingPage {
   private professions = signal<LookupOption[]>([]);
   readonly packages = signal<PackageOffer[]>([]);
   readonly model = signal<Partial<ApplicationCreate>>({ client_type: 'PARTICULIER' });
+  /** Champs dont la valeur a été renseignée par l'OCR — exclus du verrou READONLY_ONCE_FILLED
+   *  pour rester corrigibles (une lecture OCR erronée ne doit jamais figer un champ). */
+  private readonly ocrFilledKeys = signal<Set<string>>(new Set());
   /** Survit à la destruction/recréation des étapes documents/biométrie lors de la navigation (@switch). */
   readonly docState = signal<DocumentsStepState>(EMPTY_DOCUMENTS_STATE);
   readonly bioState = signal<BiometricsStepState>(EMPTY_BIOMETRICS_STATE);
@@ -287,9 +290,24 @@ export class DiasporaOnboardingPage {
     // aboutit, on fusionne les champs lus dans le modèle — SANS jamais écraser une saisie du client
     // (on ne remplit que les champs encore vides). Le client, lui, a déjà pu avancer.
     effect(() => {
-      const incoming = { ...this.ocr.addressFields(), ...this.ocr.fields() };
+      const incoming = this.resolveOcrCodes({ ...this.ocr.addressFields(), ...this.ocr.fields() });
       if (!Object.keys(incoming).length) return;
+      // Modèle courant lu HORS suivi réactif : l'effet ne dépend que des signaux OCR (il écrit
+      // le modèle, le relire réactivement le ferait se redéclencher).
+      const current = untracked(() => this.model()) as Record<string, unknown>;
+      const filledNow = Object.entries(incoming)
+        .filter(([k, v]) => v != null && String(v).trim() !== ''
+          && (current[k] == null || String(current[k]).trim() === ''))
+        .map(([k]) => k);
+      if (!filledNow.length) return;
       this.model.update((m) => this.fillMissing(m, incoming));
+      // Mémorise quels champs viennent de l'OCR → ils restent éditables même s'ils font partie
+      // de READONLY_ONCE_FILLED (l'OCR peut se tromper, l'utilisateur doit pouvoir corriger).
+      this.ocrFilledKeys.update((s) => {
+        const next = new Set(s);
+        for (const k of filledNow) next.add(k);
+        return next;
+      });
     });
 
     this.api.nationalities().subscribe({ next: (n) => this.nationalities.set(n ?? []), error: () => {} });
@@ -307,7 +325,11 @@ export class DiasporaOnboardingPage {
 
   label(f: string): string { return LABELS[f] ?? f; }
   isWide(f: string): boolean { return f === 'address_location' || f === 'email'; }
-  isReadOnly(f: string): boolean { return READONLY_ONCE_FILLED.has(f) && !!this.value(f); }
+  isReadOnly(f: string): boolean {
+    // Verrou uniquement si le champ a été renseigné en amont (pré-inscription), PAS par l'OCR :
+    // une donnée récupérée par l'OCR doit toujours pouvoir être corrigée.
+    return READONLY_ONCE_FILLED.has(f) && !!this.value(f) && !this.ocrFilledKeys().has(f);
+  }
   isRequired(f: string): boolean { return REQUIRED_FIELDS.has(f); }
   /** Un champ obligatoire mais masqué (ex. régime matrimonial pour un homme célibataire) ne
    *  doit jamais bloquer la progression — seuls les champs visibles sont vérifiés. */
@@ -377,6 +399,31 @@ export class DiasporaOnboardingPage {
       }
     }
     return out as Partial<ApplicationCreate>;
+  }
+
+  /** Traduit les valeurs OCR exprimées en libellé vers le code attendu par les listes déroulantes
+   *  (ex. nationalité « CAMEROUNAISE » → « CM ») : sans cela, le `<select>` ne peut pas afficher la
+   *  valeur lue (ses options sont indexées par code). Une valeur non résolue est retirée — le champ
+   *  reste vide, à choisir manuellement (mieux qu'une valeur invisible qui semble « non préremplie »). */
+  private resolveOcrCodes(incoming: Partial<ApplicationCreate>): Partial<ApplicationCreate> {
+    const out = { ...incoming } as Record<string, unknown>;
+    const nat = out['nationality'];
+    if (nat != null && String(nat).trim() !== '') {
+      const code = this.matchNationalityCode(String(nat));
+      if (code) out['nationality'] = code; else delete out['nationality'];
+    }
+    return out as Partial<ApplicationCreate>;
+  }
+
+  /** Retrouve le code d'une nationalité à partir de son libellé OCR (insensible à la casse/aux
+   *  accents), en s'appuyant sur la liste chargée depuis le backend (lecture réactive : dès que la
+   *  liste arrive, l'effet OCR se rejoue et la nationalité se résout). */
+  private matchNationalityCode(raw: string): string | undefined {
+    const norm = (x: string) => x.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+    const target = norm(raw);
+    if (!target) return undefined;
+    const hit = this.nationalities().find((n) => norm(n.name) === target || n.code.toLowerCase() === target);
+    return hit?.code;
   }
 
   selectPackage(pkg: PackageOffer): void {
