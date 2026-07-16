@@ -17,7 +17,7 @@ const RESEND_COOLDOWN_S = 60;
       <form (submit)="onSubmit($event)" style="display:grid;gap:16px;">
         @if (!sent()) {
           <p style="font-size:13px;color:#6B7280;margin:0;">
-            Un code à 6 chiffres va être envoyé par WhatsApp au numéro renseigné à l'étape précédente.
+            Un code à 6 chiffres va vous être envoyé par WhatsApp{{ model.email ? ' et par email' : '' }}, à partir des coordonnées renseignées à l'étape précédente.
           </p>
         } @else {
           <onb-form-field label="Code reçu" required>
@@ -38,6 +38,12 @@ const RESEND_COOLDOWN_S = 60;
               {{ fallbackOtp() }}
             </p>
           </div>
+        }
+
+        @if (emailSent()) {
+          <p style="font-size:12px;color:#16A34A;margin:0;">
+            Un code vous a aussi été envoyé par email — pensez à vérifier vos courriers indésirables.
+          </p>
         }
 
         @if (error()) { <p style="font-size:12px;color:#C8102E;margin:0;">{{ error() }}</p> }
@@ -69,8 +75,10 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
   verifying = signal(false);
   code = signal('');
   error = signal<string | null>(null);
-  /** Code renvoyé par le backend quand WhatsApp n'a PAS livré le message (repli anti-blocage). */
+  /** Code renvoyé par le backend quand NI WhatsApp NI email n'ont abouti (repli anti-blocage). */
   fallbackOtp = signal<string | null>(null);
+  /** true quand le backend a aussi expédié le code par email (canal parallèle). */
+  emailSent = signal(false);
   cooldown = signal(0);
   private cooldownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -94,11 +102,14 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
     this.sending.set(true);
     this.error.set(null);
     this.fallbackOtp.set(null);
-    this.api.sendWhatsappOtp(this.phone, this.sessionId()).subscribe({
+    this.emailSent.set(false);
+    // email + pays de résidence -> le backend notifie le client par WhatsApp ET par email.
+    this.api.sendWhatsappOtp(this.phone, this.sessionId(), this.model.email ?? undefined, this.model.residence ?? undefined).subscribe({
       next: (res) => {
         this.sending.set(false);
         this.sent.set(true);
-        // WhatsApp n'a pas remis le code : on l'affiche pour ne pas bloquer le parcours.
+        this.emailSent.set(!!res?.email_sent);
+        // Code non remis par WhatsApp NI par email : on l'affiche pour ne pas bloquer le parcours.
         if (res?.fallback_otp) this.fallbackOtp.set(res.fallback_otp);
         this.startCooldown();
       },

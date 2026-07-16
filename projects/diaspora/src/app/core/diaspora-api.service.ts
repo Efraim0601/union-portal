@@ -33,7 +33,9 @@ export interface WhatsappOtpSendResult {
   whatsapp_accepted?: boolean;
   whatsapp_delivered?: boolean;
   whatsapp_delivery_status?: string;
-  /** Renseigné uniquement quand WhatsApp n'a pas livré le code : à afficher au client. */
+  /** true si le code a AUSSI été envoyé par email (canal parallèle, cf. backend OTP_DUAL_CHANNEL_EMAIL_V1). */
+  email_sent?: boolean;
+  /** Renseigné uniquement quand NI WhatsApp NI email n'ont abouti : à afficher au client. */
   fallback_otp?: string;
   fallback_display?: boolean;
 }
@@ -226,10 +228,22 @@ export class DiasporaApi {
   // Le backend ne confirme l'envoi qu'une fois la LIVRAISON WhatsApp établie.
   // Si Meta ne remet pas le message, il renvoie `fallback_otp` : le code est
   // alors affiché au client pour ne pas bloquer le parcours.
-  sendWhatsappOtp(phone: string, sessionId: string): Observable<WhatsappOtpSendResult> {
+  //
+  // Notification dual-canal : dès qu'une adresse email est fournie, le backend envoie
+  // le code par WhatsApp ET par email (cf. OTP_DUAL_CHANNEL_EMAIL_V1). On transmet donc
+  // l'email (et le pays de résidence) pour que le client soit notifié sur les deux canaux.
+  sendWhatsappOtp(
+    phone: string,
+    sessionId: string,
+    email?: string,
+    country?: string,
+  ): Observable<WhatsappOtpSendResult> {
+    const body: Record<string, string> = { session_id: sessionId, phone };
+    if (email) body['email'] = email;
+    if (country) body['country'] = country;
     return this.http.post<WhatsappOtpSendResult>(
       `${this.base}/pre-onboarding/otp/send`,
-      { session_id: sessionId, phone },
+      body,
     );
   }
   verifyWhatsappOtp(
