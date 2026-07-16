@@ -26,18 +26,17 @@ depuis document_auth_service.py / pre_onboarding.py.
 import io
 import re
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
+from PIL import Image, ImageOps
 from rapidocr_onnxruntime import RapidOCR
 
 app = FastAPI(title="diaspora-ocr")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-_ocr = RapidOCR()
 
 
 def log(msg: str) -> None:
@@ -45,15 +44,87 @@ def log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# OCR — lignes triées de haut en bas (rôle fixe en MRZ, lecture des libellés + valeurs).
+# Moteur OCR — RapidOCR avec le modèle de reconnaissance LATIN (PP-OCRv3) si présent
+# (server/diaspora-ocr/ocr_models/), bien meilleur que le modèle par défaut sur du texte
+# français/latin (une pièce lue en « DATEDERANSSS » par défaut redevient lisible). Repli
+# automatique sur le modèle par défaut si le modèle latin est absent.
 # ---------------------------------------------------------------------------
+_MODEL_DIR = Path(__file__).resolve().parent / "ocr_models"
+
+
+def _make_ocr() -> RapidOCR:
+    model = _MODEL_DIR / "latin_PP-OCRv3_rec_infer.onnx"
+    keys = _MODEL_DIR / "latin_dict.txt"
+    if model.exists() and keys.exists():
+        try:
+            log(f"[diaspora-ocr] RapidOCR + modèle latin ({model.name})")
+            return RapidOCR(rec_model_path=str(model), rec_keys_path=str(keys), det_limit_side_len=1536)
+        except Exception as e:
+            log(f"[diaspora-ocr] échec chargement modèle latin ({e}) — modèle par défaut")
+    log("[diaspora-ocr] RapidOCR modèle par défaut (modèle latin absent)")
+    return RapidOCR()
+
+
+_ocr = _make_ocr()
+
+
+def _preprocess(image_bytes: bytes) -> np.ndarray:
+    """Redressement EXIF + RGB + agrandissement (côté max ≥ 1600 px) : une pièce photographiée
+    de loin ou en petite résolution devient exploitable par l'OCR."""
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
+    w, h = img.size
+    m = max(w, h)
+    if m and m < 1600:
+        r = 1600 / m
+        img = img.resize((max(1, int(w * r)), max(1, int(h * r))))
+    return np.asarray(img)
+
+
+def _enhance(arr: np.ndarray) -> np.ndarray:
+    """2ᵉ passe (si la 1re lit peu) : niveaux de gris + deskew Otsu léger + CLAHE (contraste
+    local). Redresse une carte penchée et remonte le contraste d'une photo terne/sombre."""
+    import cv2
+
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    try:
+        th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        coords = cv2.findNonZero(th)
+        if coords is not None:
+            angle = cv2.minAreaRect(coords)[-1]
+            if angle > 45:
+                angle -= 90
+            if 0.3 <= abs(angle) <= 15:
+                hh, ww = gray.shape[:2]
+                mat = cv2.getRotationMatrix2D((ww / 2, hh / 2), angle, 1.0)
+                gray = cv2.warpAffine(gray, mat, (ww, hh), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    except Exception:
+        pass
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+
+
+def _run_ocr(arr: np.ndarray) -> list:
+    result, _ = _ocr(arr)
+    return result or []
+
+
 def _ocr_rows(image_bytes: bytes) -> list:
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    result, _ = _ocr(np.array(img))
-    if not result:
+    """Résultats OCR triés de haut en bas. Fait une 2ᵉ passe « rehaussée » si la 1re lit peu
+    (peu de lignes ou peu de caractères) et garde la meilleure des deux."""
+    arr = _preprocess(image_bytes)
+    rows = _run_ocr(arr)
+    chars = sum(len(str(r[1])) for r in rows)
+    if len(rows) < 6 or chars < 40:
+        try:
+            rows2 = _run_ocr(_enhance(arr))
+            if sum(len(str(r[1])) for r in rows2) > chars:
+                rows = rows2
+        except Exception as e:
+            log(f"[diaspora-ocr] 2e passe rehaussée ignorée : {e}")
+    if not rows:
         return []
     # tri par Y du centre de la boîte englobante
-    return sorted(result, key=lambda r: sum(p[1] for p in r[0]) / len(r[0]))
+    return sorted(rows, key=lambda r: sum(p[1] for p in r[0]) / len(r[0]))
 
 
 def ocr_texts(image_bytes: bytes) -> tuple[list[str], list[str]]:
