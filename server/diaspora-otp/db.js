@@ -66,12 +66,52 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id);
   CREATE INDEX IF NOT EXISTS idx_documents_application ON documents(application_id);
 
+  -- reseau/region/active : mêmes champs qu'AgencyDto côté promote (projects/promote/src/app/
+  -- core/models.ts), pour pouvoir réconcilier sans migration si les deux backends sont un jour
+  -- reliés — aucun pont ne les relie aujourd'hui (promoteApp, Spring Boot, absent de ce dépôt).
   CREATE TABLE IF NOT EXISTS agencies (
     code TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    city TEXT
+    city TEXT,
+    reseau TEXT,
+    region TEXT,
+    active INTEGER NOT NULL DEFAULT 1
+  );
+
+  -- Listes KYC paramétrables (secteurs, professions, tranches de revenu, etc.) + sous-secteurs
+  -- (sector_code renseigné uniquement pour kind='subsectors') — éditées via /admin/parametrage.
+  CREATE TABLE IF NOT EXISTS lookups (
+    kind TEXT NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    sector_code TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (kind, code)
+  );
+
+  CREATE TABLE IF NOT EXISTS packages (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    tagline TEXT,
+    currency TEXT NOT NULL DEFAULT 'XAF',
+    opening_fee REAL NOT NULL DEFAULT 0,
+    subscription_fee REAL NOT NULL DEFAULT 0,
+    monthly_fee REAL NOT NULL DEFAULT 0,
+    payment_required INTEGER NOT NULL DEFAULT 0,
+    features TEXT NOT NULL DEFAULT '[]',
+    sort_order INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// Migration idempotente : une base créée avant l'ajout de reseau/region/active n'a que
+// (code, name, city) — `CREATE TABLE IF NOT EXISTS` ne les ajoute pas rétroactivement.
+for (const col of ['reseau TEXT', 'region TEXT', "active INTEGER NOT NULL DEFAULT 1"]) {
+  try {
+    db.exec(`ALTER TABLE agencies ADD COLUMN ${col}`);
+  } catch (e) {
+    if (!String(e.message).includes('duplicate column')) throw e;
+  }
+}
 
 const now = () => Date.now();
 const genReference = (prefix) => `AFR-${prefix}-${crypto.randomInt(100000, 999999)}`;
@@ -180,16 +220,26 @@ function rowToApplication(row) {
 }
 
 // ---- Référentiel agences (paramétrable via l'interface admin diaspora) ----
+function rowToAgency(row) {
+  return { code: row.code, name: row.name, city: row.city ?? undefined, reseau: row.reseau ?? undefined, region: row.region ?? undefined, active: !!row.active };
+}
+
 export function listAgencies() {
-  return db.prepare(`SELECT code, name, city FROM agencies ORDER BY name`).all();
+  return db.prepare(`SELECT code, name, city, reseau, region, active FROM agencies ORDER BY name`).all().map(rowToAgency);
 }
 
 export function replaceAgencies(list) {
   db.exec('BEGIN');
   try {
     db.prepare(`DELETE FROM agencies`).run();
-    const ins = db.prepare(`INSERT INTO agencies (code, name, city) VALUES (?, ?, ?)`);
-    for (const a of list) ins.run(String(a.code ?? ''), String(a.name ?? ''), a.city ? String(a.city) : null);
+    const ins = db.prepare(`INSERT INTO agencies (code, name, city, reseau, region, active) VALUES (?, ?, ?, ?, ?, ?)`);
+    for (const a of list) {
+      ins.run(
+        String(a.code ?? ''), String(a.name ?? ''),
+        a.city ? String(a.city) : null, a.reseau ? String(a.reseau) : null, a.region ? String(a.region) : null,
+        a.active === false ? 0 : 1,
+      );
+    }
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -202,6 +252,93 @@ export function replaceAgencies(list) {
 export function seedAgenciesIfEmpty(defaults) {
   const { n } = db.prepare(`SELECT COUNT(*) AS n FROM agencies`).get();
   if (n === 0) replaceAgencies(defaults);
+}
+
+// ---- Listes KYC paramétrables (sectors, professions, income-ranges, income-types,
+//      funds-origins, account-objects) + sous-secteurs ----
+export function listLookup(kind) {
+  return db.prepare(`SELECT code, name FROM lookups WHERE kind = ? ORDER BY sort_order, name`).all(kind);
+}
+
+export function replaceLookup(kind, list) {
+  db.exec('BEGIN');
+  try {
+    db.prepare(`DELETE FROM lookups WHERE kind = ?`).run(kind);
+    const ins = db.prepare(`INSERT INTO lookups (kind, code, name, sort_order) VALUES (?, ?, ?, ?)`);
+    list.forEach((r, i) => ins.run(kind, String(r.code ?? ''), String(r.name ?? ''), i));
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return listLookup(kind);
+}
+
+export function seedLookupIfEmpty(kind, defaults) {
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM lookups WHERE kind = ?`).get(kind);
+  if (n === 0) replaceLookup(kind, defaults);
+}
+
+export function listSubsectors() {
+  return db.prepare(`SELECT code, name, sector_code FROM lookups WHERE kind = 'subsectors' ORDER BY sort_order, name`).all();
+}
+
+export function replaceSubsectors(list) {
+  db.exec('BEGIN');
+  try {
+    db.prepare(`DELETE FROM lookups WHERE kind = 'subsectors'`).run();
+    const ins = db.prepare(`INSERT INTO lookups (kind, code, name, sector_code, sort_order) VALUES ('subsectors', ?, ?, ?, ?)`);
+    list.forEach((r, i) => ins.run(String(r.code ?? ''), String(r.name ?? ''), r.sector_code ? String(r.sector_code) : null, i));
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return listSubsectors();
+}
+
+export function seedSubsectorsIfEmpty(defaults) {
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM lookups WHERE kind = 'subsectors'`).get();
+  if (n === 0) replaceSubsectors(defaults);
+}
+
+// ---- Packages / formules de compte ----
+function rowToPackage(row) {
+  return {
+    code: row.code, name: row.name, tagline: row.tagline ?? undefined, currency: row.currency,
+    opening_fee: row.opening_fee, subscription_fee: row.subscription_fee, monthly_fee: row.monthly_fee,
+    payment_required: !!row.payment_required, features: JSON.parse(row.features || '[]'),
+  };
+}
+
+export function listPackages() {
+  return db.prepare(`SELECT * FROM packages ORDER BY sort_order, name`).all().map(rowToPackage);
+}
+
+export function replacePackages(list) {
+  db.exec('BEGIN');
+  try {
+    db.prepare(`DELETE FROM packages`).run();
+    const ins = db.prepare(
+      `INSERT INTO packages (code, name, tagline, currency, opening_fee, subscription_fee, monthly_fee, payment_required, features, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    list.forEach((p, i) => ins.run(
+      String(p.code ?? ''), String(p.name ?? ''), p.tagline ? String(p.tagline) : null,
+      String(p.currency ?? 'XAF'), Number(p.opening_fee) || 0, Number(p.subscription_fee) || 0, Number(p.monthly_fee) || 0,
+      p.payment_required ? 1 : 0, JSON.stringify(Array.isArray(p.features) ? p.features : []), i,
+    ));
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return listPackages();
+}
+
+export function seedPackagesIfEmpty(defaults) {
+  const { n } = db.prepare(`SELECT COUNT(*) AS n FROM packages`).get();
+  if (n === 0) replacePackages(defaults);
 }
 
 // ---- Dossiers entreprise ----

@@ -1,0 +1,12 @@
+# Service OCR (RapidOCR/ONNX + MRZ) — FastAPI/uvicorn.
+# libgl1 + libglib2.0-0 : requis par opencv (tiré par rapidocr-onnxruntime) sur une
+# base slim. Le code est monté en volume au runtime (uvicorn --reload) ; seules les
+# dépendances lourdes (onnxruntime, opencv...) sont figées dans l'image.
+FROM python:3.12-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY server/diaspora-ocr/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10003", "--reload"]

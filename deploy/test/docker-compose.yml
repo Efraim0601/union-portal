@@ -1,0 +1,55 @@
+# ============================================================================
+# Stack de TEST en ligne — parcours diaspora (front + OCR), sans promote ni le
+# lourd backend diaspora-onboarding. C'est la stack qui exerce le code de CE dépôt :
+#   • gateway       : les 3 fronts Angular (nginx), origine unique
+#   • diaspora-otp  : backend /api/* (Node + SQLite), relaie l'OCR
+#   • diaspora-ocr  : service OCR (RapidOCR + MRZ ICAO 9303), port 10003
+#
+# Le portail n'est publié QUE sur 127.0.0.1 : il n'est joignable que par le tunnel
+# Cloudflare (cloudflared, sur l'hôte) — jamais directement via l'IP du VPS.
+#
+# Build+run :  docker compose -f deploy/test/docker-compose.yml up -d --build
+# (à lancer depuis la RACINE du dépôt : le contexte de build est `.`)
+# ============================================================================
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: afriland-union:test
+    environment:
+      # Pas de backend promote dans cette stack de test : on pointe l'upstream promote
+      # vers diaspora-otp pour que nginx démarre (les appels /promote-api/* renverront
+      # 404 — sans effet, on ne teste pas promote ici). /api/* -> diaspora-otp.
+      PROMOTE_UPSTREAM: diaspora-otp:10002
+      DIASPORA_UPSTREAM: diaspora-otp:10002
+    ports:
+      - "127.0.0.1:8899:80"
+    depends_on:
+      - diaspora-otp
+    restart: unless-stopped
+
+  diaspora-otp:
+    build:
+      context: ../..
+      dockerfile: deploy/test/Dockerfile.otp
+    working_dir: /app
+    volumes:
+      - ../../server/diaspora-otp:/app          # code monté (itération sans rebuild)
+      - otp_node_modules:/app/node_modules       # préserve les deps de l'image
+    environment:
+      PORT: "10002"
+      OCR_SERVICE_URL: http://diaspora-ocr:10003
+    restart: unless-stopped
+
+  diaspora-ocr:
+    build:
+      context: ../..
+      dockerfile: deploy/test/Dockerfile.ocr
+    working_dir: /app
+    volumes:
+      - ../../server/diaspora-ocr:/app           # code monté (uvicorn --reload)
+    restart: unless-stopped
+
+volumes:
+  otp_node_modules:

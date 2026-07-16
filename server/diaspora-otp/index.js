@@ -9,6 +9,9 @@ import {
   saveDocument, createApplication, getApplicationById, getApplicationByReference,
   getApplicationByEmail, getApplicationByContact, createEnterpriseApplication,
   listAgencies, replaceAgencies, seedAgenciesIfEmpty,
+  listLookup, replaceLookup, seedLookupIfEmpty,
+  listSubsectors, replaceSubsectors, seedSubsectorsIfEmpty,
+  listPackages, replacePackages, seedPackagesIfEmpty,
   UPLOADS_DIR,
 } from './db.js';
 
@@ -100,12 +103,181 @@ const NATIONALITIES = [
   { code: 'US', label: 'Américaine' }, { code: 'BE', label: 'Belge' }, { code: 'CI', label: 'Ivoirienne' },
 ];
 // Amorce de la table `agencies` (SQLite) au premier démarrage seulement — modifiable ensuite
-// via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ.
+// via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ. Réseau/région à
+// renseigner en admin (non fournis avec cette liste de noms d'agences).
 seedAgenciesIfEmpty([
-  { code: 'YDE01', name: 'Agence Yaoundé Centre', city: 'Yaoundé' },
-  { code: 'DLA01', name: 'Agence Douala Akwa', city: 'Douala' },
-  { code: 'PAR01', name: 'Agence Paris', city: 'Paris' },
+  { code: 'AGENCE_MOBILE', name: 'FIRST BANK Agence Mobile' },
+  { code: 'AHALA', name: 'FIRST BANK Ahala' },
+  { code: 'AKWA', name: 'FIRST BANK Akwa' },
+  { code: 'AKWA_MILLENIUM', name: 'FIRST BANK Akwa Millenium' },
+  { code: 'AWAE', name: 'FIRST BANK Awae' },
+  { code: 'BAFANG', name: 'FIRST BANK Bafang' },
+  { code: 'BAFIA', name: 'FIRST BANK Bafia' },
+  { code: 'BAMENDA', name: 'FIRST BANK Bamenda' },
+  { code: 'BAMENDA_NKWEN', name: 'FIRST BANK Bamenda-Nkwen' },
+  { code: 'BAMENDZI', name: 'FIRST BANK Bamendzi' },
+  { code: 'BASTOS', name: 'FIRST BANK Bastos' },
+  { code: 'BATOURI', name: 'FIRST BANK Batouri' },
+  { code: 'BEKOKO', name: 'FIRST BANK Bekoko' },
+  { code: 'BERTOUA', name: 'FIRST BANK Bertoua' },
+  { code: 'BESSENGUE', name: 'FIRST BANK Bessengue' },
+  { code: 'BIYEM_ASSI', name: 'FIRST BANK Biyem-Assi' },
+  { code: 'BIYEM_ASSI_CARREFOUR', name: 'FIRST BANK Biyem-Assi Carrefour' },
+  { code: 'BONABERI', name: 'FIRST BANK Bonaberi' },
+  { code: 'BONABERI_II', name: 'FIRST BANK Bonaberi II' },
+  { code: 'BONAMOUSSADI', name: 'FIRST BANK Bonamoussadi' },
+  { code: 'BONANDJO', name: 'FIRST BANK Bonandjo' },
+  { code: 'BONAPRIOSO', name: 'FIRST BANK Bonaprioso' },
+  { code: 'BONASSAMA', name: 'FIRST BANK Bonassama' },
+  { code: 'BUEA', name: 'FIRST BANK Buea' },
+  { code: 'CAMAIR', name: 'FIRST BANK Camair' },
+  { code: 'CITES_DES_PALMIERS', name: 'FIRST BANK Cités des Palmiers' },
+  { code: 'COTE_D_IVOIRE', name: "FIRST BANK Côte d'Ivoire" },
+  { code: 'CTX_CENTRE_SUD_NORD', name: 'FIRST BANK CTX Centre-Sud-Nord' },
+  { code: 'CTX_LITTORAL_OUEST', name: 'FIRST BANK CTX Littoral-Ouest' },
+  { code: 'DAKAR', name: 'FIRST BANK Dakar' },
+  { code: 'DAMAS', name: 'FIRST BANK Damas' },
+  { code: 'DOUCHE_MUNICIPALE', name: 'FIRST BANK Douche Municipale' },
+  { code: 'DSCHANG', name: 'FIRST BANK Dschang' },
+  { code: 'EBOLOWA', name: 'FIRST BANK Ebolowa' },
+  { code: 'EDEA', name: 'FIRST BANK Edea' },
+  { code: 'ESSOS', name: 'FIRST BANK Essos' },
+  { code: 'ETOUDI', name: 'FIRST BANK Etoudi' },
+  { code: 'FENETRE_ISLAMIC', name: 'FIRST BANK Fenêtre Islamic' },
+  { code: 'FOUNBOT', name: 'FIRST BANK Founbot' },
+  { code: 'GAROUA', name: 'FIRST BANK Garoua' },
+  { code: 'GAROUA_BOULAI', name: 'FIRST BANK Garoua-Boulai' },
+  { code: 'HIPPODROME', name: 'FIRST BANK Hippodrome' },
+  { code: 'KOTTO_BANGUE', name: 'FIRST BANK Kotto-Bangue' },
+  { code: 'KOUMASSI', name: 'FIRST BANK Koumassi' },
+  { code: 'KOUSSIRI', name: 'FIRST BANK Koussiri' },
+  { code: 'KRIBI', name: 'FIRST BANK Kribi' },
+  { code: 'KUMBA', name: 'FIRST BANK Kumba' },
+  { code: 'LIMBE', name: 'FIRST BANK Limbe' },
+  { code: 'LOGBABA', name: 'FIRST BANK Logbaba' },
+  { code: 'LOGBOM', name: 'FIRST BANK Logbom' },
+  { code: 'LOUM', name: 'FIRST BANK Loum' },
+  { code: 'MABANDA', name: 'FIRST BANK Mabanda' },
+  { code: 'MAKEPE', name: 'FIRST BANK Makepe' },
+  { code: 'MARCHE_CENTRAL', name: 'FIRST BANK Marché Central' },
+  { code: 'MAROUA', name: 'FIRST BANK Maroua' },
+  { code: 'MAROUA_II', name: 'FIRST BANK Maroua II' },
+  { code: 'MBALGONG', name: 'FIRST BANK Mbalgong' },
+  { code: 'MBALLA_II', name: 'FIRST BANK Mballa II' },
+  { code: 'MBALMAYO', name: 'FIRST BANK Mbalmayo' },
+  { code: 'MBOPPI', name: 'FIRST BANK Mboppi' },
+  { code: 'MBOUDA', name: 'FIRST BANK Mbouda' },
+  { code: 'MEIGANGA', name: 'FIRST BANK Meiganga' },
+  { code: 'MELEN', name: 'FIRST BANK Melen' },
+  { code: 'MENDONG', name: 'FIRST BANK Mendong' },
+  { code: 'MESSA', name: 'FIRST BANK Messa' },
+  { code: 'MESSAMENDONGO', name: 'FIRST BANK Messamendongo' },
+  { code: 'MFOU', name: 'FIRST BANK Mfou' },
+  { code: 'MFOUNDI', name: 'FIRST BANK Mfoundi' },
+  { code: 'MINBOMAN', name: 'FIRST BANK Minboman' },
+  { code: 'MOKOLO', name: 'FIRST BANK Mokolo' },
+  { code: 'MVAN', name: 'FIRST BANK Mvan' },
+  { code: 'MVOG_MBI', name: 'FIRST BANK Mvog-Mbi' },
+  { code: 'NDOG_PASSI', name: 'FIRST BANK Ndog-Passi' },
+  { code: 'NDOKOTTI', name: 'FIRST BANK Ndokotti' },
+  { code: 'NEWBELL', name: 'FIRST BANK Newbell' },
+  { code: 'NGAOUNDERE', name: 'FIRST BANK Ngaoundere' },
+  { code: 'NKOLBISSON', name: 'FIRST BANK Nkolbisson' },
+  { code: 'NKOLBONG', name: 'FIRST BANK Nkolbong' },
+  { code: 'NKONGSAMBA', name: 'FIRST BANK Nkongsamba' },
+  { code: 'NKOUABANG', name: 'FIRST BANK Nkouabang' },
+  { code: 'NKOULULOUN', name: 'FIRST BANK Nkoululoun' },
+  { code: 'OBALA', name: 'FIRST BANK Obala' },
+  { code: 'OLEMBE', name: 'FIRST BANK Olembe' },
+  { code: 'OMNISPORT', name: 'FIRST BANK Omnisport' },
+  { code: 'PK_14', name: 'FIRST BANK PK 14' },
+  { code: 'PORT_AUTONOME_DOUALA', name: 'FIRST BANK Port Autonome Douala' },
+  { code: 'PORT_DE_KRIBI', name: 'FIRST BANK Port de Kribi' },
+  { code: 'PROMOTE', name: 'FIRST BANK Promote' },
+  { code: 'RDC', name: 'FIRST BANK RDC' },
+  { code: 'RETRAITE', name: 'FIRST BANK Retraite' },
+  { code: 'ROUMBE_ADJIA', name: 'FIRST BANK Roumbe Adjia' },
+  { code: 'SAINT_MICHEL', name: 'FIRST BANK Saint Michel' },
+  { code: 'SANGMELIMA', name: 'FIRST BANK Sangmelima' },
+  { code: 'SAO_TOME', name: 'FIRST BANK Sao Tome' },
+  { code: 'SHELL_NEWBELL', name: 'FIRST BANK Shell Newbell' },
+  { code: 'TAMDJA', name: 'FIRST BANK Tamdja' },
+  { code: 'YADEME', name: 'FIRST BANK Yademe' },
+  { code: 'YASSA', name: 'FIRST BANK Yassa' },
 ]);
+
+// Amorce des listes KYC paramétrables — mêmes valeurs par défaut que mock-api.interceptor.ts
+// (LOOKUP_DEFAULTS), pour un rendu identique que le front tape sur le mock local ou ce vrai
+// backend. Modifiable ensuite via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ.
+seedLookupIfEmpty('sectors', [
+  { code: 'COMMERCE', name: 'Commerce' }, { code: 'AGRICULTURE', name: 'Agriculture' },
+  { code: 'INDUSTRIE', name: 'Industrie' }, { code: 'SERVICES', name: 'Services' },
+  { code: 'FONCTION_PUBLIQUE', name: 'Fonction publique' }, { code: 'SANTE', name: 'Santé' },
+  { code: 'EDUCATION', name: 'Éducation' }, { code: 'TRANSPORT', name: 'Transport' },
+  { code: 'BTP', name: 'BTP / Construction' }, { code: 'AUTRE', name: 'Autre' },
+]);
+seedLookupIfEmpty('professions', [
+  { code: 'SALARIE_PRIVE', name: 'Salarié du secteur privé' }, { code: 'FONCTIONNAIRE', name: 'Fonctionnaire' },
+  { code: 'COMMERCANT', name: 'Commerçant(e)' }, { code: 'ENTREPRENEUR', name: 'Entrepreneur / Chef d’entreprise' },
+  { code: 'PROFESSION_LIBERALE', name: 'Profession libérale' }, { code: 'AGRICULTEUR', name: 'Agriculteur / Éleveur' },
+  { code: 'ETUDIANT', name: 'Étudiant(e)' }, { code: 'RETRAITE', name: 'Retraité(e)' },
+  { code: 'SANS_EMPLOI', name: 'Sans emploi' }, { code: 'AUTRE', name: 'Autre' },
+]);
+seedLookupIfEmpty('income-ranges', [
+  { code: 'MOINS_500K', name: 'Moins de 500 000' }, { code: '500K_1M', name: '500 000 – 1 000 000' },
+  { code: '1M_3M', name: '1 000 000 – 3 000 000' }, { code: 'PLUS_3M', name: 'Plus de 3 000 000' },
+]);
+seedLookupIfEmpty('income-types', [
+  { code: 'SALAIRE', name: 'Salaire' }, { code: 'ACTIVITE_INDEPENDANTE', name: 'Activité indépendante / commerciale' },
+  { code: 'PENSION', name: 'Pension / Retraite' }, { code: 'REVENUS_LOCATIFS', name: 'Revenus locatifs' },
+  { code: 'AUTRE', name: 'Autre' },
+]);
+seedLookupIfEmpty('funds-origins', [
+  { code: 'SALAIRE', name: 'Salaire' }, { code: 'EPARGNE', name: 'Épargne personnelle' },
+  { code: 'HERITAGE', name: 'Héritage' }, { code: 'VENTE_BIEN', name: 'Vente de bien' },
+  { code: 'ACTIVITE_COMMERCIALE', name: 'Activité commerciale' }, { code: 'AUTRE', name: 'Autre' },
+]);
+seedLookupIfEmpty('account-objects', [
+  { code: 'EPARGNE', name: 'Épargne' }, { code: 'TRANSACTIONS_COURANTES', name: 'Transactions courantes' },
+  { code: 'TRANSFERTS_INTERNATIONAUX', name: 'Transferts internationaux' }, { code: 'INVESTISSEMENT', name: 'Investissement' },
+  { code: 'AUTRE', name: 'Autre' },
+]);
+seedSubsectorsIfEmpty([
+  { code: 'COMMERCE_DETAIL', name: 'Commerce de détail', sector_code: 'COMMERCE' },
+  { code: 'COMMERCE_GROS', name: 'Commerce de gros', sector_code: 'COMMERCE' },
+  { code: 'IMPORT_EXPORT', name: 'Import-export', sector_code: 'COMMERCE' },
+  { code: 'AGRI_VIVRIERE', name: 'Agriculture vivrière', sector_code: 'AGRICULTURE' },
+  { code: 'AGRI_ELEVAGE', name: 'Élevage', sector_code: 'AGRICULTURE' },
+  { code: 'INDUSTRIE_AGRO', name: 'Agro-industrie', sector_code: 'INDUSTRIE' },
+  { code: 'SERVICES_FINANCIERS', name: 'Services financiers', sector_code: 'SERVICES' },
+  { code: 'SERVICES_INFORMATIQUE', name: 'Informatique / Numérique', sector_code: 'SERVICES' },
+]);
+seedPackagesIfEmpty([
+  {
+    code: 'BUDGET', name: 'Package Budget', tagline: 'Destiné aux petites bourses',
+    currency: 'XAF', opening_fee: 0, subscription_fee: 0, monthly_fee: 0, payment_required: false,
+    features: ['SMS', 'First Carte Fellow', 'SARA Banking'],
+  },
+  {
+    code: 'BUSINESS', name: 'Package Business', tagline: 'Pour les professionnels',
+    currency: 'XAF', opening_fee: 0, subscription_fee: 0, monthly_fee: 0, payment_required: false,
+    features: ['SMS', 'First Assurance', 'Découvert permanent', 'Carte Visa Classique'],
+  },
+  {
+    code: 'ECO', name: 'Package Eco', tagline: 'L’essentiel au meilleur prix',
+    currency: 'XAF', opening_fee: 0, subscription_fee: 0, monthly_fee: 0, payment_required: false,
+    features: ['SMS', 'First Assurance', 'SARA Banking'],
+  },
+]);
+
+const LOOKUP_KINDS = new Set(['sectors', 'professions', 'income-ranges', 'income-types', 'funds-origins', 'account-objects']);
+function requireAdmin(req, res, next) {
+  // Même niveau de protection que /api/agencies/active (PUT) ci-dessous : présence d'un
+  // Authorization Bearer, pas de vérification cryptographique — à durcir avec une vraie
+  // session admin backend. Cohérent avec mock-api.interceptor.ts côté front.
+  if (!req.headers.authorization) return res.status(401).json({ error: 'Authentification requise.' });
+  next();
+}
 
 app.get('/api/countries/active', (_req, res) => res.json(COUNTRIES));
 app.get('/api/nationalities/active', (_req, res) => res.json(NATIONALITIES));
@@ -120,6 +292,38 @@ app.put('/api/agencies/active', (req, res) => {
 });
 app.get('/api/subsectors/by-sector/:code', (_req, res) => res.json([]));
 app.get('/api/subsectors/grouped', (_req, res) => res.json({}));
+
+// ---- Listes KYC paramétrables (/admin/parametrage) ----
+app.get('/api/lookups/subsectors', (_req, res) => res.json(listSubsectors()));
+app.put('/api/lookups/subsectors', requireAdmin, (req, res) => {
+  res.json(replaceSubsectors(Array.isArray(req.body) ? req.body : []));
+});
+app.get('/api/lookups/packages', (_req, res) => res.json(listPackages()));
+app.put('/api/lookups/packages', requireAdmin, (req, res) => {
+  res.json(replacePackages(Array.isArray(req.body) ? req.body : []));
+});
+app.get('/api/lookups/:kind', (req, res) => {
+  if (!LOOKUP_KINDS.has(req.params.kind)) return res.status(404).json({ error: 'Liste inconnue.' });
+  res.json(listLookup(req.params.kind));
+});
+app.put('/api/lookups/:kind', requireAdmin, (req, res) => {
+  if (!LOOKUP_KINDS.has(req.params.kind)) return res.status(404).json({ error: 'Liste inconnue.' });
+  res.json(replaceLookup(req.params.kind, Array.isArray(req.body) ? req.body : []));
+});
+
+// ---- Session admin (/admin/parametrage) ----
+// Identifiants de dev — mêmes que mock-api.interceptor.ts, à remplacer par un vrai flux
+// d'auth backend avant toute mise en production. Surchargeables via .env (ADMIN_EMAIL/ADMIN_PASSWORD).
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@diaspora.local';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Diaspora-Admin-2026!';
+const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+app.post('/api/admin/login', (req, res) => {
+  const { email, password } = req.body ?? {};
+  if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Identifiants invalides.' });
+  }
+  res.json({ token: crypto.randomUUID(), expires_at: new Date(Date.now() + ADMIN_TOKEN_TTL_MS).toISOString() });
+});
 
 // ---- Pré-onboarding : OTP WhatsApp (Callbell) — persisté en SQLite ----
 // Contrat aligné sur le vrai backend FastAPI (routes /otp/{send,verify}, session_id fourni

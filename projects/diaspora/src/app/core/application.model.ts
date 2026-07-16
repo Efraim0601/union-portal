@@ -91,7 +91,17 @@ export interface ApplicationResponse extends ApplicationCreate {
 export interface Country { code: string; name: string; dial_code?: string; }
 export interface Nationality { code: string; name: string; }
 export interface Subsector { code: string; name: string; sector_code?: string; }
-export interface Agency { code: string; name: string; city?: string; }
+/** Champs réseau/région/actif alignés sur AgencyDto (projects/promote/src/app/core/models.ts)
+ *  pour permettre une réconciliation sans migration si les deux backends sont un jour connectés
+ *  — aucun pont ne les relie aujourd'hui (promoteApp, Spring Boot, absent de ce dépôt). */
+export interface Agency {
+  code: string;
+  name: string;
+  city?: string;
+  reseau?: string;
+  region?: string;
+  active?: boolean;
+}
 
 /**
  * Listes paramétrables via l'interface admin (secteurs, tranches de revenu, types de revenu,

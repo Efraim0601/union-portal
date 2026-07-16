@@ -1,0 +1,9 @@
+# Backend diaspora léger (Node + SQLite) — sert /api/* et relaie l'OCR.
+# node:sqlite (db.js) exige Node >= 22 : on isole ici en Node 24, indépendamment
+# du Node de l'hôte. Le code source est monté en volume au runtime (itération sans
+# rebuild) ; seules les dépendances sont figées dans l'image.
+FROM node:24-alpine
+WORKDIR /app
+COPY server/diaspora-otp/package.json server/diaspora-otp/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+CMD ["node", "index.js"]

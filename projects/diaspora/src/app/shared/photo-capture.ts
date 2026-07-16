@@ -428,13 +428,28 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
     if (this.streaming()) this.openCamera();
   }
 
+  /** Résolution de capture dérivée du ratio réel `boxW/boxH` — un cadre carré (selfie) capture
+   *  en carré, un cadre paysage (pièce d'identité, ratio ID-1 ≈ 1.6) capture en paysage. Capturer
+   *  à une résolution fixe 640×400 quel que soit le cadre affiché désynchronisait aperçu et
+   *  analyse (cf. retour terrain : cadrage CNI qui ne capture pas la carte en entier). */
+  private captureDimensions(): { w: number; h: number } {
+    if (this.round) return { w: 480, h: 480 };
+    const cr = this.boxW / this.boxH;
+    // Un document (detect='document', ex. MRZ de la CNI) a besoin de texte net et lisible —
+    // 640px de large ne suffit pas pour l'OCR. Le selfie/générique reste à 640 (poids/latence).
+    const TARGET_LONG_EDGE = this.detect === 'document' ? 1280 : 640;
+    return cr >= 1
+      ? { w: TARGET_LONG_EDGE, h: Math.round(TARGET_LONG_EDGE / cr) }
+      : { w: Math.round(TARGET_LONG_EDGE * cr), h: TARGET_LONG_EDGE };
+  }
+
   shoot() {
     const v = this.video?.nativeElement;
     const c = this.canvas?.nativeElement;
     if (!v || !c) return;
     this.stopDetection();
     this.shooting.set(true);
-    const w = this.round ? 480 : 640, h = this.round ? 480 : 400;
+    const { w, h } = this.captureDimensions();
     c.width = w; c.height = h;
     const ctx = c.getContext('2d')!;
     const vr = v.videoWidth / v.videoHeight, cr = w / h;
@@ -504,7 +519,7 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
 
   private drawCover(img: HTMLImageElement): string {
     const c = this.canvas?.nativeElement ?? document.createElement('canvas');
-    const w = this.round ? 480 : 640, h = this.round ? 480 : 400;
+    const { w, h } = this.captureDimensions();
     c.width = w; c.height = h;
     const ctx = c.getContext('2d')!;
     const ir = img.naturalWidth / img.naturalHeight, cr = w / h;
@@ -518,7 +533,7 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
   /** Aperçu neutre pour que le KYC puisse continuer sans caméra disponible. */
   private simulate() {
     const c = this.canvas?.nativeElement ?? document.createElement('canvas');
-    const w = this.round ? 480 : 640, h = this.round ? 480 : 400;
+    const { w, h } = this.captureDimensions();
     c.width = w; c.height = h;
     const ctx = c.getContext('2d')!;
     const g = ctx.createLinearGradient(0, 0, w, h);

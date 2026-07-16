@@ -161,6 +161,9 @@ export class DiasporaApi {
   agencies(): Observable<Agency[]> {
     return this.http.get<Agency[]>(`${this.base}/agencies/active`);
   }
+  saveAgencies(list: Agency[]): Observable<Agency[]> {
+    return this.http.put<Agency[]>(`${this.base}/agencies/active`, list);
+  }
   subsectorsBySector(sectorCode: string): Observable<Subsector[]> {
     return this.http.get<Subsector[]>(`${this.base}/subsectors/by-sector/${sectorCode}`);
   }

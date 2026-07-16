@@ -62,13 +62,13 @@ const IDENTITY_TYPE_LABELS: Record<string, string> = {
   CARTE_SEJOUR: 'Carte de séjour', CARTE_CONSULAIRE: 'Carte consulaire',
 };
 
-/** Champs préremplis en amont (pré-inscription / choix de la pièce / OCR à l'étape documents) :
+/** Champs préremplis en amont (pré-inscription / choix de la pièce à l'étape documents) :
  *  lecture seule une fois renseignés, pour ne pas invalider ce qui a déjà été vérifié en amont
- *  (le statut résident/non-résident et les documents requis dépendent de `residence`). */
-const READONLY_ONCE_FILLED = new Set([
-  'residence', 'identity_document_type',
-  'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',
-]);
+ *  (le statut résident/non-résident et les documents requis dépendent de `residence`).
+ *  Les champs venant de l'OCR (numéro/date/lieu de délivrance) restent EUX éditables — l'OCR
+ *  peut se tromper et l'utilisateur doit pouvoir corriger, sans quoi une erreur de lecture
+ *  bloque définitivement le champ (cf. retour terrain : valeurs fausses non corrigibles). */
+const READONLY_ONCE_FILLED = new Set(['residence', 'identity_document_type']);
 
 /** Champs obligatoires — bloquent le passage à l'étape suivante tant qu'ils sont vides
  *  (en plus de l'astérisque affiché sur le libellé). */

@@ -78,8 +78,17 @@ function buildMockResponse(method: string, url: string, body: unknown, authHeade
   // ---- Référentiels ----
   if (method === 'GET' && path === 'countries/active') return MOCK_COUNTRIES;
   if (method === 'GET' && path === 'nationalities/active') return MOCK_NATIONALITIES;
-  if (method === 'GET' && path === 'agencies/active') return MOCK_AGENCIES;
   if (method === 'GET' && path.startsWith('subsectors/')) return [];
+
+  // ---- Agences : paramétrables via /admin/parametrage, mêmes règles que les listes ci-dessous
+  //      (lecture publique, écriture authentifiée) — persistées en localStorage. ----
+  if (path === 'agencies/active') {
+    if (method === 'GET') return readLookup('agencies');
+    if (method === 'PUT') {
+      if (!authHeader) throw new MockUnauthorized('Authentification requise pour modifier cette liste.');
+      return writeLookup('agencies', body);
+    }
+  }
 
   // ---- Listes paramétrables (admin) : lecture publique (le formulaire d'onboarding en a besoin
   //      pour ses listes déroulantes), écriture réservée aux sessions admin authentifiées
@@ -174,12 +183,6 @@ const MOCK_NATIONALITIES = [
   { code: 'US', name: 'Américaine' },
 ];
 
-const MOCK_AGENCIES = [
-  { code: 'YDE01', name: 'Agence Yaoundé Centre', city: 'Yaoundé' },
-  { code: 'DLA01', name: 'Agence Douala Akwa', city: 'Douala' },
-  { code: 'PAR01', name: 'Agence Paris', city: 'Paris' },
-];
-
 // ---- Listes paramétrables (secteurs, tranches/types de revenu, origine des fonds, objet du
 //      compte, sous-secteurs, formules de compte) — persistées en localStorage tant que le vrai
 //      backend n'expose pas encore /api/lookups/*. L'interface admin lit/écrit via ces mêmes clés,
@@ -187,6 +190,11 @@ const MOCK_AGENCIES = [
 const LOOKUP_STORAGE_PREFIX = 'diaspora_mock_lookups_';
 
 const LOOKUP_DEFAULTS: Record<string, unknown> = {
+  agencies: [
+    { code: 'YDE01', name: 'Agence Yaoundé Centre', city: 'Yaoundé' },
+    { code: 'DLA01', name: 'Agence Douala Akwa', city: 'Douala' },
+    { code: 'PAR01', name: 'Agence Paris', city: 'Paris' },
+  ],
   sectors: [
     { code: 'COMMERCE', name: 'Commerce' },
     { code: 'AGRICULTURE', name: 'Agriculture' },
