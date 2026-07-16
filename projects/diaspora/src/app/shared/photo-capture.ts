@@ -61,7 +61,7 @@ const T: Record<string, string> = {
   template: `
     @if (imageData) {
       <div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px solid rgba(20,20,30,0.10);border-radius:12px;">
-        <div [style.width.px]="boxW" [style.height.px]="boxH" [style.border-radius.px]="round ? boxW : 16"
+        <div [style.width.px]="boxW" [style.maxWidth]="'100%'" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
              style="position:relative;overflow:hidden;box-shadow:0 8px 20px rgba(20,20,30,0.10);">
           @if (isImagePreview()) {
             <img [src]="imageData" alt="capture" style="width:100%;height:100%;object-fit:cover" />
@@ -94,7 +94,7 @@ const T: Record<string, string> = {
       </div>
     } @else {
       <div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px solid rgba(20,20,30,0.10);border-radius:12px;">
-        <div [style.width.px]="boxW" [style.height.px]="boxH" [style.border-radius.px]="round ? boxW : 16"
+        <div [style.width.px]="boxW" [style.maxWidth]="'100%'" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
              style="position:relative;overflow:hidden;background:#151821;display:flex;align-items:center;justify-content:center;">
           <video #video autoplay playsinline muted
                  [style.display]="streaming() ? 'block' : 'none'"

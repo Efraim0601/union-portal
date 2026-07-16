@@ -63,7 +63,7 @@ const DOUBLE_SIDED_TYPES: readonly IdentityDocumentType[] = ['CNI', 'CARTE_SEJOU
           <diaspora-photo-capture
             [guide]="identityNeedsBothSides() ? 'Cadrez le recto entier, bien à plat.' : 'Cadrez la page photo du passeport, bien à plat.'"
             detect="document" [qualityCheck]="true" [imageData]="previews()['IDENTITY_RECTO'] ?? null"
-            facing="environment" [allowFlip]="true" [boxW]="300" [boxH]="190"
+            facing="environment" [allowFlip]="true" [boxW]="420" [boxH]="265"
             (captured)="onIdentityCaptured('RECTO', $event)" (retake)="onIdentityRetake('RECTO')" />
           @if (identityStatus('RECTO') === 'uploading') { <p style="font-size:12px;color:#6B7280;margin-top:10px;">Analyse en cours…</p> }
           @if (identityStatus('RECTO') === 'done') { <p style="font-size:12px;color:#16A34A;margin-top:10px;">Recto reçu.</p> }
@@ -74,7 +74,7 @@ const DOUBLE_SIDED_TYPES: readonly IdentityDocumentType[] = ['CNI', 'CARTE_SEJOU
             <diaspora-photo-capture
               guide="Cadrez le verso entier, bien à plat." detect="document" [qualityCheck]="true"
               [imageData]="previews()['IDENTITY_VERSO'] ?? null"
-              facing="environment" [allowFlip]="true" [boxW]="300" [boxH]="190"
+              facing="environment" [allowFlip]="true" [boxW]="420" [boxH]="265"
               (captured)="onIdentityCaptured('VERSO', $event)" (retake)="onIdentityRetake('VERSO')" />
             @if (identityStatus('VERSO') === 'uploading') { <p style="font-size:12px;color:#6B7280;margin-top:10px;">Envoi en cours…</p> }
             @if (identityStatus('VERSO') === 'done') { <p style="font-size:12px;color:#16A34A;margin-top:10px;">Verso reçu.</p> }
@@ -99,7 +99,7 @@ const DOUBLE_SIDED_TYPES: readonly IdentityDocumentType[] = ['CNI', 'CARTE_SEJOU
           <diaspora-photo-capture
             guide="Photographiez ou importez le document." detect="off"
             [imageData]="previews()[req.key] ?? null"
-            facing="environment" [allowFlip]="true"
+            facing="environment" [allowFlip]="true" [boxW]="420" [boxH]="265"
             (captured)="onCaptured(req, $event)" (retake)="onDocRetake(req.key)" />
           @if (status()[req.key] === 'uploading') { <p style="font-size:12px;color:#6B7280;margin-top:10px;">Analyse en cours…</p> }
           @if (status()[req.key] === 'done') { <p style="font-size:12px;color:#16A34A;margin-top:10px;">Document reçu.</p> }
