@@ -118,6 +118,23 @@ const server = http.createServer(async (req, res) => {
       return res.end('federation manifest introuvable');
     }
 
+    // --- MediaPipe (FaceLandmarker, capture selfie/KYC) ------------------------
+    // Les fronts référencent le modèle en chemin ABSOLU racine (`/mediapipe/wasm`,
+    // `/mediapipe/face_landmarker.task`, cf. shared/face-mesh.ts). En fédération les
+    // assets d'un remote vivent sous /remotes/<app>/, donc à la racine /mediapipe/*
+    // tomberait en 404 (SPA fallback) et la détection de visage ne s'initialiserait
+    // jamais. On sert l'unique copie (buildée dans le remote diaspora) à la racine,
+    // exactement comme le fait deploy/nginx.conf.
+    if (urlPath === '/mediapipe' || urlPath.startsWith('/mediapipe/')) {
+      const rel = urlPath.replace(/^\/mediapipe\/?/, '');
+      const fp = safeJoin(join(ROOTS.diaspora, 'mediapipe'), rel);
+      if (fp && existsSync(fp) && statSync(fp).isFile()) {
+        return void sendFile(res, fp, { cache: true });
+      }
+      res.writeHead(404);
+      return res.end('mediapipe asset introuvable');
+    }
+
     // --- Remotes (assets statiques + SPA fallback) ---
     for (const remote of ['promote', 'diaspora']) {
       const prefix = `/remotes/${remote}/`;
