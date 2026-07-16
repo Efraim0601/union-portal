@@ -1,4 +1,5 @@
-import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy, signal } from '@angular/core';
+import { OnbDots } from './loader-dots';
 
 /**
  * SectionCard + StepNav — reproduction À L'IDENTIQUE de
@@ -39,6 +40,7 @@ export class OnbSectionCard {
   selector: 'onb-step-nav',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [OnbDots],
   template: `
     <div [style.justify-content]="onBack ? 'space-between' : 'flex-end'"
          style="display:flex;align-items:center;padding-top:20px;margin-top:8px;border-top:1px solid rgba(20,20,30,0.08);font-family:'Inter',system-ui,sans-serif;">
@@ -49,12 +51,14 @@ export class OnbSectionCard {
           Retour
         </button>
       }
-      <button type="submit" [disabled]="isLoading || disabled"
-        [style.background]="isLoading || disabled ? '#ccc' : '#C8102E'"
-        [style.cursor]="isLoading || disabled ? 'not-allowed' : 'pointer'"
-        style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;color:#fff;border:none;font-size:12px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;">
-        {{ submitLabel }}
-        @if (!isLoading) {
+      <button type="submit" [disabled]="isLoading || disabled || busy()" (click)="onSubmitClick($event)"
+        [style.background]="isLoading || disabled || busy() ? '#ccc' : '#C8102E'"
+        [style.cursor]="isLoading || disabled || busy() ? 'not-allowed' : 'pointer'"
+        style="display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:150px;min-height:41px;padding:12px 28px;color:#fff;border:none;font-size:12px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;">
+        @if (busy() || isLoading) {
+          <onb-dots color="#fff" />
+        } @else {
+          {{ submitLabel }}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
         }
       </button>
@@ -67,4 +71,20 @@ export class OnbStepNav {
   @Input() isLoading = false;
   @Input() disabled = false;
   @Output() back = new EventEmitter<void>();
+
+  /** Loader « 3 boules » affiché ~1 s au clic, avant la soumission réelle du formulaire. */
+  busy = signal(false);
+
+  onSubmitClick(e: Event): void {
+    if (this.isLoading || this.disabled || this.busy()) return;
+    // On diffère la soumission d'1 s en montrant le loader, puis on re-soumet le
+    // formulaire parent (tous les onb-step-nav sont dans un <form> — cf. étapes).
+    e.preventDefault();
+    const form = (e.currentTarget as HTMLElement).closest('form') as HTMLFormElement | null;
+    this.busy.set(true);
+    setTimeout(() => {
+      this.busy.set(false);
+      form?.requestSubmit();
+    }, 1000);
+  }
 }

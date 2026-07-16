@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { OnbFormField, OnbInput } from '../../ui/form-field';
 import { OnbSectionCard, OnbStepNav } from '../../ui/section-card';
+import { OnbDots } from '../../ui/loader-dots';
 import { DiasporaApi } from '../../core/diaspora-api.service';
 import { ApplicationCreate } from '../../core/application.model';
 
@@ -11,7 +12,7 @@ const RESEND_COOLDOWN_S = 60;
   selector: 'diaspora-otp-step',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [OnbSectionCard, OnbStepNav, OnbFormField, OnbInput],
+  imports: [OnbSectionCard, OnbStepNav, OnbFormField, OnbInput, OnbDots],
   template: `
     <onb-section-card [section]="2" title="Vérification WhatsApp" [subtitle]="'Code envoyé à ' + phone">
       <form (submit)="onSubmit($event)" style="display:grid;gap:16px;">
@@ -50,9 +51,11 @@ const RESEND_COOLDOWN_S = 60;
 
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
           <button type="button" (click)="sendOtp()" [disabled]="sending() || cooldown() > 0"
-            style="padding:10px 18px;border-radius:8px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;font-size:12.5px;font-weight:600;cursor:pointer;"
+            style="display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:150px;min-height:38px;padding:10px 18px;border-radius:8px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;font-size:12.5px;font-weight:600;cursor:pointer;"
             [style.opacity]="cooldown() > 0 ? 0.6 : 1">
-            {{ !sent() ? 'Envoyer le code' : (cooldown() > 0 ? 'Renvoyer (' + cooldown() + 's)' : 'Renvoyer le code') }}
+            @if (sending()) { <onb-dots color="#C8102E" /> } @else {
+              {{ !sent() ? 'Envoyer le code' : (cooldown() > 0 ? 'Renvoyer (' + cooldown() + 's)' : 'Renvoyer le code') }}
+            }
           </button>
         </div>
 
