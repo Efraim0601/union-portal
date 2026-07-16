@@ -5,6 +5,7 @@ import { OnbSectionCard } from '../ui/section-card';
 import { OnbFormField, OnbInput, OnbSelect, OnbCheckbox } from '../ui/form-field';
 import { DiasporaApi } from '../core/diaspora-api.service';
 import { AdminAuth } from '../core/admin-auth';
+import { siblingUrl } from '../core/nav';
 import { Agency, LookupKind, LookupOption, PackageOffer, Subsector } from '../core/application.model';
 
 /** Même normalisation qu'en promote (projects/promote/src/app/pages/admin.ts) — accents,
@@ -309,13 +310,17 @@ export class DiasporaAdminConfigPage {
     if ((err as { status?: number })?.status === 401) {
       this.auth.logout();
       this.sessionError.set('Session expirée — reconnectez-vous pour continuer.');
-      this.router.navigate(['/admin/login'], { queryParams: { returnUrl: '/admin/parametrage' } });
+      // Les deux chemins partagent le même préfixe de montage ('' en standalone, '/diaspora' en
+      // fédération) — on le calcule une seule fois depuis l'URL courante (encore '.../admin/parametrage').
+      const returnUrl = this.router.url.split('?')[0];
+      const loginUrl = siblingUrl(this.router, '/admin/parametrage', '/admin/login');
+      this.router.navigateByUrl(`${loginUrl}?returnUrl=${encodeURIComponent(returnUrl)}`);
     }
   }
 
   logout(): void {
     this.auth.logout();
-    this.router.navigateByUrl('/admin/login');
+    this.router.navigateByUrl(siblingUrl(this.router, '/admin/parametrage', '/admin/login'));
   }
 
   addRow(rows: WritableSignal<LookupOption[]>): void {

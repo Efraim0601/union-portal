@@ -78,11 +78,17 @@ export class StaffSidebar {
       out.push({ id: 'team', icon: '👥', label: t('side_team'), route: '/team' });
     }
     if (this.auth.hasRole('SUPERVISEUR')) out.push({ id: 'supervision', icon: '🔎', label: t('side_supervision'), route: '/supervision' });
+    // Recherche transactions (KYC + images) — encadrement uniquement.
+    if (this.auth.hasRole('ADMIN', 'MANAGER', 'SUPERVISEUR')) out.push({ id: 'transactions', icon: '🔍', label: t('side_transactions'), route: '/transactions' });
     if (this.auth.hasRole('CASHIER')) out.push({ id: 'cashier', icon: '💵', label: t('side_cashier'), route: '/cashier' });
     if (this.auth.hasRole('PRINT_AGENT')) out.push({ id: 'print', icon: '🖨️', label: t('side_print'), route: '/print' });
     if (this.auth.hasRole('COLLECTEUR')) out.push({ id: 'collecte', icon: '📦', label: t('side_collecte'), route: '/collecte' });
     out.push({ id: 'subscribe', icon: '➕', label: t('side_subscribe'), route: '/subscribe' });
     out.push({ id: 'recharge', icon: '💳', label: t('side_recharge'), route: '/recharge' });
+    // Prospects (souscriptions non finalisées à relancer) — visible à toute la chaîne commerciale.
+    if (this.auth.hasRole('AGENT', 'CASHIER', 'PRINT_AGENT', 'COLLECTEUR', 'SUPERVISEUR', 'CHEF_EQUIPE', 'MANAGER', 'ADMIN')) {
+      out.push({ id: 'prospects', icon: '🎯', label: t('side_prospects'), route: '/prospects' });
+    }
     out.push({ id: 'guide', icon: '📘', label: t('side_guide'), route: '/guide-utilisateur.html', external: true });
     out.push({ id: 'change-password', icon: '🔑', label: t('pw_change'), route: '/change-password' });
     return out;

@@ -4,6 +4,7 @@ import { OnbSectionCard, OnbStepNav } from '../ui/section-card';
 import { OnbFormField, OnbInput } from '../ui/form-field';
 import { DiasporaApi } from '../core/diaspora-api.service';
 import { AdminAuth } from '../core/admin-auth';
+import { siblingUrl } from '../core/nav';
 
 /**
  * Connexion admin diaspora — protège /admin/parametrage. Passe par /api/admin/login, mocké en
@@ -70,7 +71,11 @@ export class DiasporaAdminLoginPage {
       next: (res) => {
         this.loading.set(false);
         this.auth.setSession(res.token, new Date(res.expires_at).getTime());
-        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') || '/admin/parametrage';
+        // Le param 'returnUrl' (posé par admin-auth.guard.ts) est déjà une URL absolue correcte
+        // (fédérée ou non) ; à défaut (accès direct à /admin/login), on calcule le chemin voisin
+        // 'admin/parametrage' plutôt qu'un '/admin/parametrage' codé en dur (casse sous le shell).
+        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl')
+          ?? siblingUrl(this.router, '/admin/login', '/admin/parametrage');
         this.router.navigateByUrl(returnUrl);
       },
       error: () => {

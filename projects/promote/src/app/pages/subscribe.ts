@@ -1,7 +1,8 @@
 import { Component, ElementRef, OnDestroy, computed, effect, inject, signal, viewChild } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import { Api } from '../core/api';
+import { Auth } from '../core/auth';
 import { I18n } from '../core/i18n';
 import {
   AgencyDto, ConfigDto, CreateSubscriptionRequest, ProductCategoryDto, ProductComponentDto, ProductDto,
@@ -580,6 +581,8 @@ export class SubscribePage implements OnDestroy {
   protected i18n = inject(I18n);
   protected api = inject(Api);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private auth = inject(Auth);
 
   /** Timer du suivi de paiement mobile money (polling du statut backend). */
   private pollHandle: ReturnType<typeof setInterval> | null = null;
@@ -742,6 +745,11 @@ export class SubscribePage implements OnDestroy {
     });
     this.api.config().subscribe((c) => this.config.set(c));
     this.api.agencies().subscribe((a) => this.agencies.set(a));
+    // Pré-remplissage « Reprendre un prospect » : identité passée en query params depuis /prospects.
+    const q = this.route.snapshot.queryParamMap;
+    if (q.get('prenom')) this.firstName.set(q.get('prenom')!.trim());
+    if (q.get('nom')) this.lastName.set(q.get('nom')!.trim());
+    if (q.get('phone')) this.phone.set(q.get('phone')!.trim());
     // Réévalue l'indicateur « défiler pour voir plus » quand la liste/le filtre/l'étape change
     effect(() => {
       this.filteredProducts(); this.cat(); this.step(); this.scrollArea();
@@ -1011,9 +1019,20 @@ export class SubscribePage implements OnDestroy {
     };
   }
 
+  /** True when a staff member of the sales chain is logged in: their sale is attributed to them
+   *  (assisted path, agentId = principal) instead of going through the anonymous public funnel. */
+  private isStaffSale(): boolean {
+    return this.auth.isLoggedIn()
+        && this.auth.hasRole('AGENT', 'CASHIER', 'PRINT_AGENT', 'COLLECTEUR', 'SUPERVISEUR', 'CHEF_EQUIPE', 'MANAGER', 'ADMIN');
+  }
+
   submit() {
     this.submitting.set(true);
-    this.api.createSelfSubscription(this.buildRequest()).subscribe({
+    const req = this.buildRequest();
+    const create$ = this.isStaffSale()
+      ? this.api.createAssistedSubscription(req)
+      : this.api.createSelfSubscription(req);
+    create$.subscribe({
       next: (sub) => {
         this.submitting.set(false);
         this.createdRef.set(sub.ref);
