@@ -42,9 +42,15 @@ const RESEND_COOLDOWN_S = 60;
         }
 
         @if (emailSent()) {
-          <p style="font-size:12px;color:#16A34A;margin:0;">
-            Un code vous a aussi été envoyé par email — pensez à vérifier vos courriers indésirables.
-          </p>
+          @if (whatsappOk()) {
+            <p style="font-size:12px;color:#16A34A;margin:0;">
+              Un code vous a aussi été envoyé par email — pensez à vérifier vos courriers indésirables.
+            </p>
+          } @else {
+            <p style="font-size:12.5px;color:#8A6100;margin:0;">
+              Le message WhatsApp n'a pas pu être remis. Votre code vous a été envoyé par email — vérifiez votre boîte de réception (et le dossier spam).
+            </p>
+          }
         }
 
         @if (error()) { <p style="font-size:12px;color:#C8102E;margin:0;">{{ error() }}</p> }
@@ -82,6 +88,10 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
   fallbackOtp = signal<string | null>(null);
   /** true quand le backend a aussi expédié le code par email (canal parallèle). */
   emailSent = signal(false);
+  /** true quand le code a réellement été REMIS par WhatsApp (livraison confirmée par le backend,
+   *  qui distingue « accepté par Callbell » de « livré »). Sert à ne PAS écrire « aussi par email »
+   *  alors que le WhatsApp n'est jamais arrivé. */
+  whatsappOk = signal(false);
   cooldown = signal(0);
   private cooldownTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -106,12 +116,24 @@ export class DiasporaOtpStep implements OnInit, OnDestroy {
     this.error.set(null);
     this.fallbackOtp.set(null);
     this.emailSent.set(false);
+    this.whatsappOk.set(false);
     // email + pays de résidence -> le backend notifie le client par WhatsApp ET par email.
     this.api.sendWhatsappOtp(this.phone, this.sessionId(), this.model.email ?? undefined, this.model.residence ?? undefined).subscribe({
       next: (res) => {
         this.sending.set(false);
         this.sent.set(true);
         this.emailSent.set(!!res?.email_sent);
+        // Livraison WhatsApp RÉELLEMENT confirmée. Le backend distingue « accepté » de « remis » :
+        // sans confirmation ET avec un statut d'échec connu, on considère que WhatsApp n'a pas abouti,
+        // pour ne pas annoncer un WhatsApp jamais arrivé. Miroir de la page démo backend.
+        const deliveryFailed = [
+          'FAILED', 'ERROR', 'REJECTED', 'UNDELIVERED',
+          'CALLBELL_HTTP_ERROR', 'CALLBELL_ERROR', 'CALLBELL_NOT_ACCEPTED', 'CONFIGURATION_INCOMPLETE',
+        ].includes(String(res?.whatsapp_delivery_status ?? '').toUpperCase());
+        this.whatsappOk.set(
+          res?.whatsapp_delivered === true ||
+          (res?.whatsapp_delivered === undefined && !deliveryFailed),
+        );
         // Code non remis par WhatsApp NI par email : on l'affiche pour ne pas bloquer le parcours.
         if (res?.fallback_otp) this.fallbackOtp.set(res.fallback_otp);
         this.startCooldown();
