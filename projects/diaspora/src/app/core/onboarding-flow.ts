@@ -84,8 +84,11 @@ export const PARTICULIER_ONBOARDING_STEPS: OnboardingStep[] = [
   {
     index: 7,
     key: 'kyc',
-    title: "Pièce d'identité & activité",
-    description: "Document d'identité, activité économique et conformité (KYC).",
+    // La pièce est capturée à l'étape « Documents » ; ici on ne fait que confirmer ses références
+    // (préremplies par l'OCR) aux côtés de l'activité et de la conformité — d'où ce libellé, pour
+    // ne pas laisser croire qu'on re-photographie la pièce.
+    title: 'Activité & conformité (KYC)',
+    description: 'Activité économique, tranche de revenus et conformité réglementaire.',
     kind: 'generic',
     fields: [
       'identity_document_type', 'identity_document_number', 'identity_document_issue_date', 'identity_document_issue_place',

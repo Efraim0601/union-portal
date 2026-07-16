@@ -1,10 +1,11 @@
-import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, effect, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { siblingUrl } from '../core/nav';
 import { OnbSectionCard, OnbStepNav } from '../ui/section-card';
 import { OnbFormField, OnbInput, OnbSelect, OnbCheckbox } from '../ui/form-field';
 import { OnbStepperRail, StepDef } from '../ui/stepper-rail';
 import { DiasporaApi } from '../core/diaspora-api.service';
+import { OcrPrefillService } from '../core/ocr-prefill.service';
 import { ApplicationCreate, Nationality, Agency, LookupOption, PackageOffer, Subsector } from '../core/application.model';
 import { PARTICULIER_ONBOARDING_STEPS } from '../core/onboarding-flow';
 import { COUNTRY_FALLBACK_LIST } from '../core/countries-fallback';
@@ -94,13 +95,16 @@ const REVIEW_HIDDEN_KEYS = new Set([
     OnbSectionCard, OnbStepNav, OnbFormField, OnbInput, OnbSelect, OnbCheckbox, OnbStepperRail,
     DiasporaPreregistrationStep, DiasporaOtpStep, DiasporaDocumentsStep, DiasporaBiometricsStep,
   ],
+  // Scope page : la lecture OCR de la pièce survit à la navigation entre étapes (@switch), et
+  // sa seule instance est partagée avec l'étape Documents ; repartie à zéro à chaque parcours.
+  providers: [OcrPrefillService],
   template: `
     <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;">
       <div style="max-width:1040px;margin:0 auto;padding:32px 20px 60px;">
         <!-- En-tête -->
         <div style="margin-bottom:28px;">
           <div style="font-size:10px;font-weight:700;letter-spacing:1.8px;color:#C8102E;text-transform:uppercase;margin-bottom:6px;">
-            Ouverture de compte · Diaspora
+            Ouverture de compte à distance
           </div>
           <h1 style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:500;color:#151821;letter-spacing:-0.5px;margin:0;">
             {{ step().title }}
@@ -234,6 +238,9 @@ const REVIEW_HIDDEN_KEYS = new Set([
     <style>
       @media (min-width: 900px) {
         .onb-grid { grid-template-columns: 240px 1fr !important; }
+        /* Rail des étapes fixe pendant le défilement du contenu (align-self:start
+           laisse au sticky la marge nécessaire, sinon l'aside s'étire sur toute la ligne). */
+        .onb-rail { position: sticky; top: 24px; align-self: start; }
       }
       @media (max-width: 899px) { .onb-rail { display: none; } }
       @media (max-width: 640px) { .onb-fields { grid-template-columns: 1fr !important; } }
@@ -243,6 +250,8 @@ const REVIEW_HIDDEN_KEYS = new Set([
 export class DiasporaOnboardingPage {
   private api = inject(DiasporaApi);
   private router = inject(Router);
+  /** Lecture OCR de la pièce menée en arrière-plan (déclenchée sur l'étape Documents). */
+  private ocr = inject(OcrPrefillService);
 
   readonly steps = PARTICULIER_ONBOARDING_STEPS;
   readonly railSteps: StepDef[] = PARTICULIER_ONBOARDING_STEPS.map((s) => ({ label: s.title, desc: s.description }));
@@ -274,6 +283,15 @@ export class DiasporaOnboardingPage {
   );
 
   constructor() {
+    // Préremplissage en arrière-plan : dès que la lecture de la pièce (ou du plan de localisation)
+    // aboutit, on fusionne les champs lus dans le modèle — SANS jamais écraser une saisie du client
+    // (on ne remplit que les champs encore vides). Le client, lui, a déjà pu avancer.
+    effect(() => {
+      const incoming = { ...this.ocr.addressFields(), ...this.ocr.fields() };
+      if (!Object.keys(incoming).length) return;
+      this.model.update((m) => this.fillMissing(m, incoming));
+    });
+
     this.api.nationalities().subscribe({ next: (n) => this.nationalities.set(n ?? []), error: () => {} });
     this.api.agencies().subscribe({ next: (a) => this.agencies.set(a ?? []), error: () => {} });
     this.api.countries().subscribe({ next: (c) => { if (c && c.length) this.countries.set(c); }, error: () => {} });
@@ -344,6 +362,22 @@ export class DiasporaOnboardingPage {
   setEvt(f: string, e: Event) { this.set(f, (e.target as HTMLInputElement).value); }
   set(f: string, v: unknown): void { this.model.update((m) => ({ ...m, [f]: v })); }
   setConsent = (v: boolean): void => this.set('consent_accepted', v);
+
+  /** Fusionne les champs lus par l'OCR dans le modèle en ne touchant QUE les champs vides — une
+   *  valeur déjà présente (saisie du client, ou lecture précédente) n'est jamais écrasée. */
+  private fillMissing(
+    model: Partial<ApplicationCreate>,
+    incoming: Partial<ApplicationCreate>,
+  ): Partial<ApplicationCreate> {
+    const out = { ...model } as Record<string, unknown>;
+    for (const [k, v] of Object.entries(incoming)) {
+      const cur = out[k];
+      if (v != null && String(v).trim() !== '' && (cur == null || String(cur).trim() === '')) {
+        out[k] = v;
+      }
+    }
+    return out as Partial<ApplicationCreate>;
+  }
 
   selectPackage(pkg: PackageOffer): void {
     this.model.update((m) => ({

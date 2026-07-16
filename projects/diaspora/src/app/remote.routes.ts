@@ -12,6 +12,9 @@ import { adminTokenInterceptor } from './core/admin-token.interceptor';
 export const routes: Routes = [
   {
     path: '',
+    // Sous le shell, le TitleStrategy d'Angular applique ce titre aux pages diaspora
+    // (les enfants n'en définissant pas) → l'onglet affiche « Afriland Onboarding ».
+    title: 'Afriland Onboarding',
     providers: [provideHttpClient(withInterceptors([adminTokenInterceptor, mockApiInterceptor]))],
     children: diasporaRoutes,
   },

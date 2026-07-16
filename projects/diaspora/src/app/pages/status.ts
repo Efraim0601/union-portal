@@ -48,7 +48,7 @@ function humanizeStatus(status: string): string {
         <div style="max-width:640px;margin:0 auto;padding:16px 20px;">
           <a (click)="goHome($event)" style="cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:10px;">
             <span style="display:inline-flex;width:30px;height:30px;border-radius:7px;background:#C8102E;color:#fff;align-items:center;justify-content:center;font-weight:700;">A</span>
-            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#151821;">Compte Diaspora</span>
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#151821;">Compte à distance</span>
           </a>
         </div>
       </header>
