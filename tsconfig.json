@@ -1,4 +1,4 @@
-/* Base TS du monorepo Angular CLI — Afriland Union.
+/* Base TS du monorepo Angular CLI — Afriland Onboarding.
    Les chemins @union/* pointent vers les libs partagées (design-system, auth). */
 {
   "compileOnSave": false,

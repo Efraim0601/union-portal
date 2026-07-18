@@ -1,7 +1,7 @@
 {
   "name": "union-portal",
   "version": "0.0.0",
-  "description": "Monorepo Angular CLI — Afriland Union (shell + promote + diaspora + libs partagées). Architecture host/remotes via Native Federation, design-system uniforme aligné sur portal-client-firstpay.",
+  "description": "Monorepo Angular CLI — Afriland Onboarding (shell + promote + diaspora + libs partagées). Architecture host/remotes via Native Federation, design-system uniforme aligné sur portal-client-firstpay.",
   "scripts": {
     "ng": "ng",
     "start": "ng serve shell",

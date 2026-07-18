@@ -1,4 +1,4 @@
-# Afriland Union — Monorepo frontend
+# Afriland Onboarding — Monorepo frontend
 
 Monorepo **Angular CLI 21** reproduisant l'architecture de `portal-client-firstpay`
 (host + remotes via **module federation**), avec un **design-system uniforme** aligné

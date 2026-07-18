@@ -1,5 +1,5 @@
 # ============================================================================
-# Afriland Union — image unique (gateway) servant shell + promote + diaspora
+# Afriland Onboarding — image unique (gateway) servant shell + promote + diaspora
 # Architecture host/remotes (Native Federation), une seule origine (SSO partagé).
 # Build :   docker build -t afriland-union .
 # Run   :   docker run -p 8080:80 afriland-union   ->  http://localhost:8080
