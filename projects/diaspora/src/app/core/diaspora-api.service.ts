@@ -198,33 +198,50 @@ export class DiasporaApi {
 
   /** Fusionne les réponses OCR (recto/verso) et projette les champs backend → clés front. */
   private combineOcr(responses: BackendOcrResponse[]): OcrExtractResult {
-    const merged: Record<string, unknown> = {};
-    for (const r of responses) {
-      const ef = r?.extracted_fields ?? {};
-      for (const [k, v] of Object.entries(ef)) {
-        if (v != null && String(v).trim() !== '' && !merged[k]) merged[k] = v;
+    // Deux ordres de priorité, car les deux faces ne font pas foi sur les mêmes champs :
+    //  - `merged`   : recto d'abord — pour ce qui ne figure QUE sur la face avant (lieu de
+    //                 naissance, date et lieu de délivrance).
+    //  - `mrzFirst` : dernière face d'abord — la MRZ (bande ICAO 9303) vit au VERSO d'une carte
+    //                 et fait autorité sur l'état civil : elle est structurée et vérifiée par
+    //                 clés de contrôle, là où la lecture par libellé du recto peut confondre
+    //                 l'étiquette et la valeur (« GIVEN NAMES » retenu comme prénom). Pour un
+    //                 passeport (une seule face, MRZ comprise) les deux ordres sont identiques.
+    const mergeIn = (list: BackendOcrResponse[]): Record<string, unknown> => {
+      const out: Record<string, unknown> = {};
+      for (const r of list) {
+        const ef = r?.extracted_fields ?? {};
+        for (const [k, v] of Object.entries(ef)) {
+          if (v != null && String(v).trim() !== '' && !out[k]) out[k] = v;
+        }
       }
-    }
-    const pick = (...keys: string[]): string | undefined => {
+      return out;
+    };
+    const merged = mergeIn(responses);
+    const mrzFirst = mergeIn([...responses].reverse());
+
+    const pickFrom = (src: Record<string, unknown>) => (...keys: string[]): string | undefined => {
       for (const k of keys) {
-        const v = merged[k];
+        const v = src[k];
         if (v != null && String(v).trim() !== '') return String(v).trim();
       }
       return undefined;
     };
+    const pick = pickFrom(merged);
+    const pickMrz = pickFrom(mrzFirst);
     const fields: Partial<ApplicationCreate> = {};
     const set = (key: keyof ApplicationCreate, val?: string) => {
       if (val) (fields as Record<string, unknown>)[key as string] = val;
     };
-    set('last_name', pick('last_name', 'surname'));
-    set('first_name', pick('first_name', 'given_names'));
-    set('sex', normalizeSex(pick('sex')));
-    set('birth_date', toIsoDate(pick('birth_date')));
+    // État civil : la MRZ prime (cf. `mrzFirst`).
+    set('last_name', pickMrz('last_name', 'surname'));
+    set('first_name', pickMrz('first_name', 'given_names'));
+    set('sex', normalizeSex(pickMrz('sex')));
+    set('birth_date', toIsoDate(pickMrz('birth_date')));
     set('birth_place', pick('place_of_birth', 'birth_place'));
     // Nationalité lue en libellé (« CAMEROUNAISE ») ; la projection libellé→code pays est faite
     // côté page (OcrPrefill → onboarding), qui dispose de la liste des nationalités.
-    set('nationality', pick('nationality'));
-    set('identity_document_number', pick('identity_document_number', 'cni_number', 'passport_number'));
+    set('nationality', pickMrz('nationality'));
+    set('identity_document_number', pickMrz('identity_document_number', 'cni_number', 'passport_number'));
     set('identity_document_issue_date', toIsoDate(pick('identity_issue_date', 'identity_document_issue_date')));
     set('identity_document_issue_place', pick('identity_document_issue_place', 'place_of_issue'));
 
