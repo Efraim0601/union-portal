@@ -5,12 +5,16 @@
   "type": "module",
   "description": "Petit backend local : envoi/vérification de l'OTP WhatsApp (Callbell) pour le parcours diaspora. Garde la clé API côté serveur (jamais exposée au frontend Angular).",
   "scripts": {
-    "start": "node --env-file=.env index.js",
+    "start": "node --env-file=.env server.js",
     "dev": "node --env-file=.env --watch index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "http-proxy-middleware": "^4.2.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^18.4.0-beta.17"
   }
 }

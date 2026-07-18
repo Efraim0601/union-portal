@@ -6,7 +6,7 @@ import multer from 'multer';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import {
   createOtpSession, getOtpSession, incrementOtpAttempts, markOtpVerified,
-  saveDocument, createApplication, getApplicationById, getApplicationByReference,
+  saveDocument, latestSessionDocument, createApplication, getApplicationById, getApplicationByReference,
   getApplicationByEmail, getApplicationByContact, createEnterpriseApplication,
   listAgencies, replaceAgencies, seedAgenciesIfEmpty,
   listLookup, replaceLookup, seedLookupIfEmpty,
@@ -59,6 +59,9 @@ const CALLBELL_SEND_URL = 'https://api.callbell.eu/v1/messages/send';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
+
+// Microservice de vérification faciale (InsightFace) — comparaison CNI ↔ vidéo/selfie.
+const FACE_VERIFY_URL = process.env.FACE_VERIFY_URL || 'http://localhost:8000';
 
 if (!CALLBELL_API_KEY || !CALLBELL_CHANNEL_UUID) {
   console.warn(
@@ -461,8 +464,107 @@ app.post('/api/pre-onboarding/otp/verify', (req, res) => {
   });
 });
 
-// ---- Pré-onboarding : documents (recto/verso, selfie, vidéo, justificatifs) ----
-app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), (req, res) => {
+// ---- Pré-onboarding : OCR (une face par appel) ----
+// Aligné sur le VRAI backend FastAPI : le front (diaspora-api.service.ts) poste UNE image par appel
+// sur /pre-onboarding/ocr et lit `extracted_fields`. On relaie l'image au service RapidOCR local
+// (/extract, qui la lit comme `recto`) et on ré-emballe sa sortie « à plat » au format attendu.
+app.post('/api/pre-onboarding/ocr', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file requis' });
+  try {
+    const fd = new FormData();
+    fd.append('document_type', req.body?.document_type || 'CNI');
+    fd.append('recto', new Blob([req.file.buffer], { type: req.file.mimetype || 'image/jpeg' }), req.file.originalname || 'image.jpg');
+    const r = await fetch(`${OCR_SERVICE_URL}/extract`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(`OCR ${r.status}`);
+    const { quality, ...fields } = await r.json();
+    res.json({ extracted_fields: fields, document_type_validation: { status: 'OK' }, document_side: null });
+  } catch (err) {
+    console.error('[diaspora-otp] OCR indisponible', err);
+    res.json({ extracted_fields: {}, document_type_validation: { status: 'OK' }, document_side: null });
+  }
+});
+
+/** Traduit la réponse du microservice face-verify en `face_match` attendu par le front
+ *  (biometrics-step.applyFaceVerdict : identity.match => « Identité vérifiée »). */
+function toFaceMatch(fv) {
+  const sim = fv.similarity;
+  const th = fv.thresholds?.match ?? 0.4;
+  const matched = fv.decision === 'MATCH';
+  const reasons = matched ? [] : [
+    fv.decision === 'REVIEW'
+      ? 'Similarité en zone de revue manuelle — vérification par un conseiller.'
+      : "Le visage filmé ne correspond pas de façon fiable à la photo de la pièce.",
+  ];
+  return {
+    status: 'OK',
+    recognizer: 'insightface-buffalo_l',
+    references: { CNI_RECTO: { status: 'OK', cosine_similarity: sim, threshold: th, quality: fv.video?.frames_with_face } },
+    identity: {
+      status: fv.decision,
+      match: matched,
+      confidence: sim,
+      recognizer: 'insightface',
+      reasons,
+      pairs: { 'CLIENT_VIDEO:CNI_RECTO': { cosine_similarity: sim, threshold: th, match: matched } },
+    },
+  };
+}
+
+/** Compare la vidéo de vivacité à l'image de référence CNI_RECTO de la session via face-verify.
+ *  Best-effort : toute erreur (service down, modèle absent, pas de référence) => verdict « indisponible »
+ *  (status MODELS_MISSING), que le front traite déjà en soft-gate non bloquant. */
+async function runSessionFaceMatch(sessionId, videoBuffer, videoName, videoMime) {
+  const ref = latestSessionDocument(sessionId, 'CNI_RECTO');
+  if (!ref) return { status: 'MODELS_MISSING', recognizer: 'insightface', identity: null };
+  const idBuffer = await fs.promises.readFile(ref.file_path);
+  const fd = new FormData();
+  fd.append('id_card', new Blob([idBuffer], { type: ref.mime_type || 'image/jpeg' }), 'cni.jpg');
+  fd.append('video', new Blob([videoBuffer], { type: videoMime || 'video/webm' }), videoName || 'video.webm');
+  const r = await fetch(`${FACE_VERIFY_URL}/api/verify-video`, { method: 'POST', body: fd });
+  if (!r.ok) throw new Error(`face-verify ${r.status}`);
+  return toFaceMatch(await r.json());
+}
+
+// ---- Pré-onboarding : enregistrement d'un fichier (aligné sur POST /pre-onboarding/save-file) ----
+// Le front poste ici recto/verso CNI, selfie (CLIENT_PHOTO), vidéo (CLIENT_VIDEO) et justificatifs.
+// L'enregistrement d'un CLIENT_VIDEO déclenche la comparaison faciale (face-verify) contre CNI_RECTO.
+app.post('/api/pre-onboarding/save-file', upload.single('file'), async (req, res) => {
+  const sessionId = req.body?.session_id;
+  const documentType = req.body?.document_type || 'DOCUMENT';
+  if (!req.file) return res.status(400).json({ error: 'file requis' });
+  if (!sessionId) return res.status(400).json({ error: 'session_id requis' });
+
+  const ext = path.extname(req.file.originalname || '') || '.bin';
+  const fileName = `${sessionId}_${documentType}_${Date.now()}${ext}`;
+  const filePath = path.join(UPLOADS_DIR, fileName);
+  try {
+    await fs.promises.writeFile(filePath, req.file.buffer);
+  } catch (err) {
+    console.error('[diaspora-otp] échec écriture document', err);
+    return res.status(500).json({ error: 'Échec de l’enregistrement du document.' });
+  }
+  saveDocument({
+    sessionId, documentType, filePath,
+    originalName: req.file.originalname, mimeType: req.file.mimetype, sizeBytes: req.file.size,
+  });
+
+  const payload = { pre_document_id: fileName, session_id: sessionId, document_type: documentType, stored_name: fileName };
+
+  // La vidéo de vivacité déclenche la vérification faciale (best-effort, jamais bloquant).
+  if (documentType === 'CLIENT_VIDEO') {
+    try {
+      payload.face_match = await runSessionFaceMatch(sessionId, req.file.buffer, req.file.originalname, req.file.mimetype);
+      console.log('[diaspora-otp] face_match', JSON.stringify(payload.face_match?.identity ?? payload.face_match?.status));
+    } catch (err) {
+      console.error('[diaspora-otp] vérification faciale indisponible', err.message);
+      payload.face_match = { status: 'MODELS_MISSING', recognizer: 'insightface', identity: null };
+    }
+  }
+  res.json(payload);
+});
+
+// ---- Pré-onboarding : documents (recto/verso, selfie, vidéo, justificatifs) — route legacy ----
+app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), async (req, res) => {
   const { sessionId } = req.params;
   const documentType = req.body?.document_type || 'DOCUMENT';
   if (!req.file) return res.status(400).json({ error: 'file requis' });
@@ -470,7 +572,15 @@ app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), (req
   const ext = path.extname(req.file.originalname || '') || '.bin';
   const fileName = `${sessionId}_${documentType}_${Date.now()}${ext}`;
   const filePath = path.join(UPLOADS_DIR, fileName);
-  fs.writeFileSync(filePath, req.file.buffer);
+  // Écriture asynchrone : un writeFileSync bloquait l'event loop le temps d'écrire l'image
+  // (~150KB+) sur disque, sérialisant TOUTES les requêtes en cours. fs.promises.writeFile rend
+  // la main à l'event loop pendant l'I/O disque (gros gain de débit sous charge).
+  try {
+    await fs.promises.writeFile(filePath, req.file.buffer);
+  } catch (err) {
+    console.error('[diaspora-otp] échec écriture document', err);
+    return res.status(500).json({ error: 'Échec de l’enregistrement du document.' });
+  }
 
   saveDocument({
     sessionId,

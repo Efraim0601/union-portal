@@ -388,7 +388,9 @@
           "defaultConfiguration": "development",
           "options": {
             "port": 4202,
+            "host": "0.0.0.0",
             "proxyConfig": "projects/diaspora/proxy.conf.json",
+            "allowedHosts": ["onboardingv2.afb-firstagent.com"],
             "headers": {
               "Access-Control-Allow-Origin": "*"
             }

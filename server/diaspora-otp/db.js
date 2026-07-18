@@ -5,13 +5,24 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, 'data');
+// Répertoire de données surchargeable (DIASPORA_DATA_DIR) : permet de pointer une base
+// jetable pour les tests de charge sans toucher aux données de dev. Défaut inchangé.
+const DATA_DIR = process.env.DIASPORA_DATA_DIR
+  ? path.resolve(process.env.DIASPORA_DATA_DIR)
+  : path.join(__dirname, 'data');
 export const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const db = new DatabaseSync(path.join(DATA_DIR, 'diaspora.db'));
 db.exec(`
   PRAGMA journal_mode = WAL;
+  -- Montée en charge / multi-process (cf. server.js, un worker par cœur) :
+  --  * busy_timeout : sous WAL un seul écrivain à la fois ; sans ce délai, deux workers
+  --    qui écrivent en même temps lèvent SQLITE_BUSY. On patiente jusqu'à 5s au lieu d'échouer.
+  --  * synchronous=NORMAL : recommandé avec WAL — beaucoup moins de fsync (débit d'écriture
+  --    bien meilleur) tout en restant durable hors coupure brutale de courant.
+  PRAGMA busy_timeout = 5000;
+  PRAGMA synchronous = NORMAL;
 
   CREATE TABLE IF NOT EXISTS pre_onboarding_sessions (
     id TEXT PRIMARY KEY,
@@ -116,6 +127,25 @@ for (const col of ['reseau TEXT', 'region TEXT', "active INTEGER NOT NULL DEFAUL
 const now = () => Date.now();
 const genReference = (prefix) => `AFR-${prefix}-${crypto.randomInt(100000, 999999)}`;
 
+/**
+ * Exécute `insert(reference)` en régénérant la référence sur collision `UNIQUE`.
+ * Sous charge, `genReference` (6 chiffres aléatoires) finit par se répéter (paradoxe des
+ * anniversaires) — sans ce retry, l'insertion renvoyait un HTTP 500 au client (constaté en
+ * test de charge). On retente avec une nouvelle référence avant d'abandonner.
+ */
+function insertWithUniqueReference(prefix, insert) {
+  let lastErr;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return insert(genReference(prefix));
+    } catch (e) {
+      if (!String(e.message).includes('UNIQUE constraint failed')) throw e;
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 // ---- Pré-onboarding : sessions OTP WhatsApp ----
 // `sessionId` est désormais fourni par le CLIENT (cf. contrat du vrai backend FastAPI,
 // aligné dans diaspora-api.service.ts / otp-step.ts) — identique entre l'envoi et la
@@ -161,22 +191,31 @@ export function documentsForApplication(applicationId) {
   return db.prepare(`SELECT * FROM documents WHERE application_id = ? ORDER BY created_at`).all(applicationId);
 }
 
+/** Dernier document d'un type donné pour une session (ex. l'image de référence 'CNI_RECTO'
+ *  pour la comparaison faciale déclenchée à l'enregistrement d'un 'CLIENT_VIDEO'). */
+export function latestSessionDocument(sessionId, documentType) {
+  return db.prepare(
+    `SELECT * FROM documents WHERE session_id = ? AND document_type = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+  ).get(sessionId, documentType);
+}
+
 // ---- Dossiers particulier ----
 export function createApplication(payload) {
-  const reference = genReference('P');
   const ts = now();
-  const info = db.prepare(
-    `INSERT INTO applications (reference, client_type, email, whatsapp_phone_full, status, pre_onboarding_session_id, payload, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'EN_COURS_DE_TRAITEMENT', ?, ?, ?, ?)`,
-  ).run(
-    reference,
-    payload.client_type ?? 'PARTICULIER',
-    payload.email ?? null,
-    payload.whatsapp_phone_full ?? null,
-    payload.pre_onboarding_session_id ?? null,
-    JSON.stringify(payload),
-    ts,
-    ts,
+  const info = insertWithUniqueReference('P', (reference) =>
+    db.prepare(
+      `INSERT INTO applications (reference, client_type, email, whatsapp_phone_full, status, pre_onboarding_session_id, payload, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'EN_COURS_DE_TRAITEMENT', ?, ?, ?, ?)`,
+    ).run(
+      reference,
+      payload.client_type ?? 'PARTICULIER',
+      payload.email ?? null,
+      payload.whatsapp_phone_full ?? null,
+      payload.pre_onboarding_session_id ?? null,
+      JSON.stringify(payload),
+      ts,
+      ts,
+    ),
   );
   if (payload.pre_onboarding_session_id) {
     linkDocumentsToApplication(payload.pre_onboarding_session_id, info.lastInsertRowid);
@@ -343,12 +382,13 @@ export function seedPackagesIfEmpty(defaults) {
 
 // ---- Dossiers entreprise ----
 export function createEnterpriseApplication(payload) {
-  const reference = genReference('ENT');
   const ts = now();
-  const info = db.prepare(
-    `INSERT INTO enterprise_applications (reference, email, phone, status, payload, created_at, updated_at)
-     VALUES (?, ?, ?, 'EN_COURS_DE_TRAITEMENT', ?, ?, ?)`,
-  ).run(reference, payload.email ?? null, payload.phone ?? null, JSON.stringify(payload), ts, ts);
+  const info = insertWithUniqueReference('ENT', (reference) =>
+    db.prepare(
+      `INSERT INTO enterprise_applications (reference, email, phone, status, payload, created_at, updated_at)
+       VALUES (?, ?, ?, 'EN_COURS_DE_TRAITEMENT', ?, ?, ?)`,
+    ).run(reference, payload.email ?? null, payload.phone ?? null, JSON.stringify(payload), ts, ts),
+  );
   const row = db.prepare(`SELECT * FROM enterprise_applications WHERE id = ?`).get(info.lastInsertRowid);
   return rowToApplication(row);
 }

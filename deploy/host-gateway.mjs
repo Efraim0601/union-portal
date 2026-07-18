@@ -142,9 +142,10 @@ const server = http.createServer(async (req, res) => {
         const rel = urlPath.slice(prefix.length) || 'index.html';
         const fp = safeJoin(ROOTS[remote], rel);
         if (fp && existsSync(fp) && statSync(fp).isFile()) {
-          // remoteEntry.json est le point d'entrée de fédération : jamais mis en
-          // cache (sinon un rebuild sert un manifest de remote périmé).
-          const noStore = rel.endsWith('remoteEntry.json');
+          // remoteEntry.json ET importmap.json sont des points d'entrée de fédération à NOM FIXE
+          // mais CONTENU variable à chaque build : jamais mis en cache (sinon un rebuild sert un
+          // manifest/importmap périmé -> deps hashées introuvables -> page blanche).
+          const noStore = rel.endsWith('remoteEntry.json') || rel.endsWith('importmap.json');
           return void sendFile(res, fp, { noStore, cache: !noStore && isAsset(urlPath) });
         }
         return void sendFile(res, join(ROOTS[remote], 'index.html'), { noStore: true });
@@ -155,9 +156,10 @@ const server = http.createServer(async (req, res) => {
     const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
     const fp = safeJoin(ROOTS.shell, rel);
     if (fp && existsSync(fp) && statSync(fp).isFile()) {
-      // index.html jamais mis en cache (sinon un rebuild sert une coquille périmée
-      // référençant d'anciens bundles) ; les autres assets sont hashés → cache long.
-      const noStore = rel === 'index.html' || rel.endsWith('/index.html');
+      // index.html ET importmap.json jamais mis en cache (nom fixe, contenu variable à chaque
+      // build → sinon on sert une coquille/importmap périmé référençant d'anciens bundles).
+      // Les autres assets sont hashés → cache long OK.
+      const noStore = rel === 'index.html' || rel.endsWith('/index.html') || rel === 'importmap.json' || rel.endsWith('/importmap.json');
       return void sendFile(res, fp, { noStore, cache: !noStore && isAsset(urlPath) });
     }
     if (isAsset(urlPath)) {

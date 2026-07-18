@@ -1,6 +1,7 @@
 import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { siblingUrl } from '../core/nav';
+import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
 
 /**
  * Écran de bienvenue affiché après « Créer un compte » : message d'accueil puis choix du
@@ -14,8 +15,8 @@ import { siblingUrl } from '../core/nav';
     <div style="min-height:100vh;background:#FFFAF6;font-family:'Inter',system-ui,sans-serif;">
       <header style="background:#fff;border-bottom:1px solid rgba(20,20,30,0.08);padding:14px 7%;">
         <a (click)="goHome($event)" style="cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:10px;width:fit-content;">
-          <span style="display:inline-flex;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#C8102E,#8f0e15);color:#fff;align-items:center;justify-content:center;font-weight:800;">A</span>
-          <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#C8102E;">Ouverture de compte</span>
+          <img [src]="afbLogo" alt="Afriland First Bank" style="height:34px;width:auto;display:block;" />
+          <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#C8102E;border-left:1px solid rgba(20,20,30,0.14);padding-left:12px;">Ouverture de compte</span>
         </a>
       </header>
 
@@ -74,6 +75,8 @@ import { siblingUrl } from '../core/nav';
 })
 export class DiasporaOnboardingWelcomePage {
   private router = inject(Router);
+  /** Logo Afriland inliné (data URI partagé) — cf. shared/afb-logo. */
+  readonly afbLogo = AFB_LOGO_DATA_URI;
 
   choose(type: 'PARTICULIER' | 'ENTREPRISE'): void {
     // Préfixe de montage déduit dynamiquement de l'URL active : reste correct que diaspora

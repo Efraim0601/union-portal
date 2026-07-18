@@ -1,0 +1,12 @@
+services:
+  face-verify:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MATCH_THRESHOLD: "0.40"
+      REVIEW_THRESHOLD: "0.30"
+      VIDEO_MAX_FRAMES: "12"
+      VIDEO_MAX_MB: "50"
+    # Aucun volume de données : rien n'est persisté
+    restart: unless-stopped

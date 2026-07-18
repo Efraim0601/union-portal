@@ -113,6 +113,28 @@ interface BackendOcrResponse {
   [k: string]: unknown;
 }
 
+/** Normalise une date OCR (« JJ/MM/AAAA », « JJ-MM-AAAA », « JJ.MM.AAAA ») au format ISO
+ *  AAAA-MM-JJ attendu par les `<input type="date">` — sans quoi la valeur lue ne s'affiche jamais.
+ *  Renvoie undefined si la chaîne n'est pas une date interprétable (le champ reste vide, à saisir). */
+function toIsoDate(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const s = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/.exec(s);
+  if (!m) return undefined;
+  const day = m[1].padStart(2, '0'), month = m[2].padStart(2, '0'), year = m[3];
+  if (+month < 1 || +month > 12 || +day < 1 || +day > 31) return undefined;
+  return `${year}-${month}-${day}`;
+}
+
+/** Normalise le sexe OCR (« M »/« F », « MASCULIN »/« FÉMININ ») vers la valeur 'M'/'F' de la liste. */
+function normalizeSex(raw?: string): string | undefined {
+  const s = (raw ?? '').trim().toUpperCase();
+  if (s.startsWith('M')) return 'M';
+  if (s.startsWith('F')) return 'F';
+  return undefined;
+}
+
 /**
  * Wrapper typé de l'API FastAPI diaspora-onboarding (base /api).
  * Endpoints dérivés de app/routers/*.py (côté client public).
@@ -196,11 +218,14 @@ export class DiasporaApi {
     };
     set('last_name', pick('last_name', 'surname'));
     set('first_name', pick('first_name', 'given_names'));
-    set('birth_date', pick('birth_date'));
+    set('sex', normalizeSex(pick('sex')));
+    set('birth_date', toIsoDate(pick('birth_date')));
     set('birth_place', pick('place_of_birth', 'birth_place'));
+    // Nationalité lue en libellé (« CAMEROUNAISE ») ; la projection libellé→code pays est faite
+    // côté page (OcrPrefill → onboarding), qui dispose de la liste des nationalités.
     set('nationality', pick('nationality'));
     set('identity_document_number', pick('identity_document_number', 'cni_number', 'passport_number'));
-    set('identity_document_issue_date', pick('identity_issue_date', 'identity_document_issue_date'));
+    set('identity_document_issue_date', toIsoDate(pick('identity_issue_date', 'identity_document_issue_date')));
     set('identity_document_issue_place', pick('identity_document_issue_place', 'place_of_issue'));
 
     // Signaux d'authenticité : on remonte le plus « parlant » (un MISMATCH prime).

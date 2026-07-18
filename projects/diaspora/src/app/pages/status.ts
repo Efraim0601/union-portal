@@ -4,6 +4,7 @@ import { OnbSectionCard } from '../ui/section-card';
 import { OnbFormField, OnbInput } from '../ui/form-field';
 import { DiasporaApi } from '../core/diaspora-api.service';
 import { siblingUrl } from '../core/nav';
+import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
 
 type SearchMode = 'reference' | 'email' | 'whatsapp';
 
@@ -47,8 +48,8 @@ function humanizeStatus(status: string): string {
       <header style="border-bottom:1px solid rgba(20,20,30,0.10);">
         <div style="max-width:640px;margin:0 auto;padding:16px 20px;">
           <a (click)="goHome($event)" style="cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:10px;">
-            <span style="display:inline-flex;width:30px;height:30px;border-radius:7px;background:#C8102E;color:#fff;align-items:center;justify-content:center;font-weight:700;">A</span>
-            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#151821;">Compte à distance</span>
+            <img [src]="afbLogo" alt="Afriland First Bank" style="height:30px;width:auto;display:block;" />
+            <span style="font-family:'Source Serif 4',Georgia,serif;font-size:16px;color:#151821;border-left:1px solid rgba(20,20,30,0.14);padding-left:12px;">Compte à distance</span>
           </a>
         </div>
       </header>
@@ -108,6 +109,8 @@ export class DiasporaStatusPage {
   private api = inject(DiasporaApi);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  /** Logo Afriland inliné (data URI partagé) — cf. shared/afb-logo. */
+  readonly afbLogo = AFB_LOGO_DATA_URI;
 
   readonly modes = MODES;
   readonly mode = signal<SearchMode>('reference');

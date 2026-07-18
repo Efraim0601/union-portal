@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Face Verify — Console de test</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#13232e;
+  --paper:#f2f4f3;
+  --card:#ffffff;
+  --line:#d5dbd9;
+  --teal:#0d6b5c;
+  --amber:#b97a12;
+  --red:#b3372f;
+  --muted:#5c6b6f;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  min-height:100vh;
+  background-image:radial-gradient(var(--line) 1px, transparent 1px);
+  background-size:26px 26px;
+}
+header{
+  border-bottom:2px solid var(--ink);
+  background:var(--card);
+  padding:18px 28px;
+  display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+}
+header h1{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:1.35rem;letter-spacing:.02em;
+}
+header h1 span{color:var(--teal)}
+header .sub{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+main{max-width:1080px;margin:0 auto;padding:28px 20px 60px}
+
+.tabs{display:flex;gap:0;margin-bottom:22px;border:1.5px solid var(--ink);width:fit-content;background:var(--card)}
+.tabs button{
+  font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:.9rem;
+  padding:10px 22px;border:none;background:transparent;cursor:pointer;color:var(--ink);
+}
+.tabs button.active{background:var(--ink);color:var(--card)}
+.tabs button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+
+.bench{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:760px){.bench{grid-template-columns:1fr}}
+
+.slot{
+  background:var(--card);border:1.5px solid var(--ink);
+  display:flex;flex-direction:column;
+}
+.slot-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-bottom:1.5px solid var(--ink);
+}
+.slot-head h2{font-family:'Space Grotesk',sans-serif;font-size:.95rem}
+.slot-head .tag{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.dropzone{
+  flex:1;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:16px;cursor:pointer;text-align:center;position:relative;
+}
+.dropzone.dragover{background:#e8f0ee}
+.dropzone p{font-size:.85rem;color:var(--muted);max-width:240px}
+.dropzone img,.dropzone video{max-width:100%;max-height:300px;border:1px solid var(--line)}
+.slot-actions{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+
+button.btn{
+  font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:.82rem;
+  padding:8px 14px;border:1.5px solid var(--ink);background:var(--card);
+  color:var(--ink);cursor:pointer;
+}
+button.btn:hover{background:var(--ink);color:var(--card)}
+button.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;font-size:.95rem;padding:12px 30px}
+button.btn.primary:hover{background:#0a5749}
+button.btn:disabled{opacity:.45;cursor:not-allowed}
+button.btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+button.btn.rec{border-color:var(--red);color:var(--red)}
+button.btn.rec.on{background:var(--red);color:#fff}
+
+.launch{display:flex;justify-content:center;margin:26px 0}
+
+.result{
+  background:var(--card);border:1.5px solid var(--ink);padding:24px;
+  display:none;position:relative;overflow:hidden;
+}
+.result.show{display:block}
+.gauge{height:14px;background:var(--paper);border:1px solid var(--ink);position:relative;margin:14px 0 6px}
+.gauge-fill{height:100%;width:0;background:var(--teal);transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.gauge-marks{position:relative;height:18px;font-family:var(--mono);font-size:.65rem;color:var(--muted)}
+.gauge-marks span{position:absolute;transform:translateX(-50%)}
+.mark-line{position:absolute;top:-15px;width:1.5px;height:14px;background:var(--ink)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
+.metric{border:1px solid var(--line);padding:10px 12px}
+.metric b{font-family:var(--mono);font-size:1rem;display:block}
+.metric small{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em}
+
+.stamp{
+  position:absolute;top:18px;right:22px;
+  font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.5rem;
+  padding:8px 18px;border:3px solid;transform:rotate(-7deg);
+  letter-spacing:.06em;opacity:0;transition:opacity .3s .5s, transform .3s .5s;
+}
+.stamp.show{opacity:.92;transform:rotate(-7deg) scale(1)}
+.stamp.MATCH{color:var(--teal);border-color:var(--teal)}
+.stamp.REVIEW{color:var(--amber);border-color:var(--amber)}
+.stamp.NO_MATCH{color:var(--red);border-color:var(--red)}
+
+.error-box{
+  display:none;background:#fbeeed;border:1.5px solid var(--red);
+  color:var(--red);padding:14px 16px;margin-top:20px;font-size:.88rem;
+}
+.error-box.show{display:block}
+.spinner{display:none;font-family:var(--mono);font-size:.8rem;color:var(--muted);text-align:center;padding:8px}
+.spinner.show{display:block}
+@media (prefers-reduced-motion: reduce){
+  .gauge-fill,.stamp{transition:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>FACE<span>·</span>VERIFY</h1>
+  <div class="sub">console de test — vérification CNI ↔ client — aucune donnée stockée</div>
+</header>
+
+<main>
+  <div class="tabs" role="tablist">
+    <button id="tabPhoto" class="active" role="tab" aria-selected="true">Photo</button>
+    <button id="tabVideo" role="tab" aria-selected="false">Vidéo</button>
+  </div>
+
+  <div class="bench">
+    <!-- CNI -->
+    <section class="slot">
+      <div class="slot-head"><h2>Pièce d'identité (CNI)</h2><span class="tag">image</span></div>
+      <div class="dropzone" id="dzId" tabindex="0" role="button" aria-label="Déposer la photo de la CNI">
+        <p>Glissez la photo de la CNI ici,<br>ou cliquez pour choisir un fichier</p>
+      </div>
+      <div class="slot-actions">
+        <button class="btn" id="btnPickId">Choisir un fichier</button>
+        <input type="file" id="fileId" accept="image/*" hidden>
+      </div>
+    </section>
+
+    <!-- Client -->
+    <section class="slot">
+      <div class="slot-head"><h2 id="clientTitle">Selfie du client</h2><span class="tag" id="clientTag">image</span></div>
+      <div class="dropzone" id="dzClient" tabindex="0" role="button" aria-label="Déposer le fichier client">
+        <p id="clientHint">Glissez le selfie ici, cliquez pour choisir un fichier, ou utilisez la caméra</p>
+      </div>
+      <div class="slot-actions">
+        <button class="btn" id="btnPickClient">Choisir un fichier</button>
+        <button class="btn" id="btnCamPhoto">Prendre une photo</button>
+        <button class="btn rec" id="btnCamVideo" style="display:none">● Enregistrer (5 s)</button>
+        <input type="file" id="fileClient" accept="image/*" hidden>
+      </div>
+    </section>
+  </div>
+
+  <div class="launch">
+    <button class="btn primary" id="btnVerify" disabled>Lancer la vérification</button>
+  </div>
+  <div class="spinner" id="spinner">analyse en cours…</div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <section class="result" id="result" aria-live="polite">
+    <div class="stamp" id="stamp"></div>
+    <h2 style="font-family:'Space Grotesk',sans-serif;font-size:1rem">Résultat de la comparaison</h2>
+    <div class="gauge"><div class="gauge-fill" id="gaugeFill"></div></div>
+    <div class="gauge-marks" id="gaugeMarks">
+      <span style="left:0">0.00</span><span style="left:100%">1.00</span>
+    </div>
+    <div class="metrics" id="metrics"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let mode = 'photo';
+let idFile = null, clientFile = null;
+
+// ---------- Tabs ----------
+function setMode(m){
+  mode = m;
+  $('tabPhoto').classList.toggle('active', m==='photo');
+  $('tabVideo').classList.toggle('active', m==='video');
+  $('tabPhoto').setAttribute('aria-selected', m==='photo');
+  $('tabVideo').setAttribute('aria-selected', m==='video');
+  $('clientTitle').textContent = m==='photo' ? 'Selfie du client' : 'Vidéo du client';
+  $('clientTag').textContent = m==='photo' ? 'image' : 'vidéo (non stockée)';
+  $('clientHint').textContent = m==='photo'
+    ? 'Glissez le selfie ici, cliquez pour choisir un fichier, ou utilisez la caméra'
+    : 'Glissez une vidéo ici, choisissez un fichier, ou enregistrez 5 secondes à la caméra';
+  $('fileClient').accept = m==='photo' ? 'image/*' : 'video/*';
+  $('btnCamPhoto').style.display = m==='photo' ? '' : 'none';
+  $('btnCamVideo').style.display = m==='video' ? '' : 'none';
+  clientFile = null;
+  resetZone($('dzClient'), $('clientHint').textContent);
+  updateVerifyBtn();
+}
+$('tabPhoto').onclick = () => setMode('photo');
+$('tabVideo').onclick = () => setMode('video');
+
+// ---------- Dropzones ----------
+function resetZone(dz, hint){
+  dz.innerHTML = '<p>'+hint+'</p>';
+}
+function showPreview(dz, file){
+  dz.innerHTML = '';
+  if(file.type.startsWith('video')){
+    const v = document.createElement('video');
+    v.src = URL.createObjectURL(file); v.controls = true; v.muted = true;
+    dz.appendChild(v);
+  } else {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file); img.alt = 'aperçu';
+    dz.appendChild(img);
+  }
+}
+function wireZone(dz, onFile){
+  dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('dragover')});
+  dz.addEventListener('dragleave', ()=>dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e=>{
+    e.preventDefault(); dz.classList.remove('dragover');
+    if(e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+  });
+}
+wireZone($('dzId'), f=>setIdFile(f));
+wireZone($('dzClient'), f=>setClientFile(f));
+$('dzId').onclick = ()=>$('fileId').click();
+$('dzClient').onclick = ()=>$('fileClient').click();
+$('btnPickId').onclick = ()=>$('fileId').click();
+$('btnPickClient').onclick = ()=>$('fileClient').click();
+$('fileId').onchange = e=>{if(e.target.files[0]) setIdFile(e.target.files[0])};
+$('fileClient').onchange = e=>{if(e.target.files[0]) setClientFile(e.target.files[0])};
+
+function setIdFile(f){ idFile=f; showPreview($('dzId'),f); updateVerifyBtn(); }
+function setClientFile(f){ clientFile=f; showPreview($('dzClient'),f); updateVerifyBtn(); }
+function updateVerifyBtn(){ $('btnVerify').disabled = !(idFile && clientFile); }
+
+// ---------- Caméra : photo ----------
+$('btnCamPhoto').onclick = async ()=>{
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+    const video = document.createElement('video');
+    video.srcObject = stream; video.autoplay = true; video.muted = true;
+    const dz = $('dzClient'); dz.innerHTML=''; dz.appendChild(video);
+    const btn = document.createElement('button');
+    btn.className='btn'; btn.textContent='Capturer'; btn.style.marginTop='8px';
+    dz.appendChild(btn);
+    btn.onclick = e=>{
+      e.stopPropagation();
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video,0,0);
+      stream.getTracks().forEach(t=>t.stop());
+      c.toBlob(b=>setClientFile(new File([b],'selfie.jpg',{type:'image/jpeg'})),'image/jpeg',0.92);
+    };
+  }catch(err){ showError("Caméra inaccessible : "+err.message); }
+};
+
+// ---------- Caméra : vidéo 5 s ----------
+$('btnCamVideo').onclick = async ()=>{
+  const btn = $('btnCamVideo');
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+    const video = document.createElement('video');
+    video.srcObject = stream; video.autoplay = true; video.muted = true;
+    const dz = $('dzClient'); dz.innerHTML=''; dz.appendChild(video);
+    btn.classList.add('on'); btn.textContent='● Enregistrement…';
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = e=>chunks.push(e.data);
+    rec.onstop = ()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      btn.classList.remove('on'); btn.textContent='● Enregistrer (5 s)';
+      const blob = new Blob(chunks,{type:rec.mimeType||'video/webm'});
+      setClientFile(new File([blob],'client.webm',{type:blob.type}));
+    };
+    rec.start();
+    setTimeout(()=>rec.state!=='inactive'&&rec.stop(), 5000);
+  }catch(err){
+    btn.classList.remove('on'); btn.textContent='● Enregistrer (5 s)';
+    showError("Caméra inaccessible : "+err.message);
+  }
+};
+
+// ---------- Vérification ----------
+$('btnVerify').onclick = async ()=>{
+  hideError(); $('result').classList.remove('show'); $('stamp').classList.remove('show');
+  $('spinner').classList.add('show'); $('btnVerify').disabled = true;
+
+  const fd = new FormData();
+  fd.append('id_card', idFile);
+  const endpoint = mode==='photo' ? '/api/verify' : '/api/verify-video';
+  fd.append(mode==='photo' ? 'selfie' : 'video', clientFile);
+
+  try{
+    const r = await fetch(endpoint,{method:'POST',body:fd});
+    const data = await r.json();
+    if(!r.ok){
+      const d = data.detail || {};
+      throw new Error(d.message || 'Erreur '+r.status);
+    }
+    renderResult(data);
+  }catch(err){ showError(err.message); }
+  finally{ $('spinner').classList.remove('show'); $('btnVerify').disabled = false; }
+};
+
+function renderResult(d){
+  const res = $('result'); res.classList.add('show');
+  const sim = d.similarity;
+  $('gaugeFill').style.width = Math.max(0, Math.min(1, sim))*100 + '%';
+  $('gaugeFill').style.background =
+    d.decision==='MATCH' ? 'var(--teal)' : d.decision==='REVIEW' ? 'var(--amber)' : 'var(--red)';
+
+  // Repères de seuils
+  const marks = $('gaugeMarks');
+  marks.innerHTML = '<span style="left:0">0.00</span><span style="left:100%">1.00</span>';
+  [['review',d.thresholds.review],['match',d.thresholds.match]].forEach(([name,v])=>{
+    const line = document.createElement('div');
+    line.className='mark-line'; line.style.left=(v*100)+'%';
+    const lbl = document.createElement('span');
+    lbl.style.left=(v*100)+'%'; lbl.textContent=name+' '+v.toFixed(2);
+    marks.appendChild(line); marks.appendChild(lbl);
+  });
+
+  const stamp = $('stamp');
+  stamp.className = 'stamp '+d.decision;
+  stamp.textContent = d.decision==='MATCH' ? 'CONFORME' : d.decision==='REVIEW' ? 'À VÉRIFIER' : 'NON CONFORME';
+  requestAnimationFrame(()=>stamp.classList.add('show'));
+
+  const m = $('metrics'); m.innerHTML='';
+  const add = (label,val)=>{
+    const div=document.createElement('div'); div.className='metric';
+    div.innerHTML='<b>'+val+'</b><small>'+label+'</small>'; m.appendChild(div);
+  };
+  add('Similarité', sim.toFixed(4));
+  add('Temps de traitement', d.processing_ms+' ms');
+  if(d.best_frame_similarity!==undefined){
+    add('Meilleure frame', d.best_frame_similarity.toFixed(4));
+    add('Frames avec visage', d.video.frames_with_face+' / '+d.video.frames_analyzed);
+    add('Mouvement', d.video.motion_score+(d.video.motion_hint==='ok'?' ✓':' ⚠'));
+  } else {
+    add('Netteté CNI', d.id_card.det_score);
+    add('Netteté selfie', d.selfie.det_score);
+  }
+  if(d.video && d.video.motion_hint!=='ok'){
+    showError('Attention : '+d.video.motion_hint+'.');
+  }
+  res.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function showError(msg){ const b=$('errorBox'); b.textContent=msg; b.classList.add('show'); }
+function hideError(){ $('errorBox').classList.remove('show'); }
+</script>
+</body>
+</html>
