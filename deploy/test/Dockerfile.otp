@@ -1,9 +1,13 @@
-# Backend diaspora léger (Node + SQLite) — sert /api/* et relaie l'OCR.
-# node:sqlite (db.js) exige Node >= 22 : on isole ici en Node 24, indépendamment
-# du Node de l'hôte. Le code source est monté en volume au runtime (itération sans
-# rebuild) ; seules les dépendances sont figées dans l'image.
+# Backend diaspora léger (Node + PostgreSQL) — sert /api/* et relaie l'OCR.
+# On isole en Node 24, indépendamment du Node de l'hôte. Le code source est monté
+# en volume au runtime (itération sans rebuild) ; seules les dépendances sont
+# figées dans l'image.
 FROM node:24-alpine
 WORKDIR /app
 COPY server/diaspora-otp/package.json server/diaspora-otp/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# --omit=dev : les devDependencies contiennent embedded-postgres (Postgres embarqué
+# pour le dev local SANS Docker), dont le binaire @embedded-postgres/windows-x64 est
+# os=win32-only -> EBADPLATFORM au build Linux. En conteneur, Postgres est un vrai
+# service du compose : ces paquets n'ont rien à faire dans l'image.
+RUN npm ci --no-audit --no-fund --omit=dev
 CMD ["node", "index.js"]
