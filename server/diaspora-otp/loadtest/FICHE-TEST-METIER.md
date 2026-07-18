@@ -1,7 +1,7 @@
 # Fiche de test métier — Onboarding KYC diaspora
 
-**Périmètre** : backend `diaspora-otp` (Express + `node:sqlite`) du parcours d'ouverture de
-compte à distance pour la diaspora (Afriland First Bank).
+**Périmètre** : backend `diaspora-otp` (Express + PostgreSQL — migré depuis `node:sqlite`,
+cf. Partie E) du parcours d'ouverture de compte à distance pour la diaspora (Afriland First Bank).
 **Objectif** : valider le parcours métier **et** la tenue en charge (montée en charge / scaling).
 **Environnement de test** : instance isolée, port 10099, Callbell désactivé (repli `fallback_otp`,
 zéro WhatsApp réel), base SQLite jetable (`DIASPORA_DATA_DIR`).
@@ -105,11 +105,13 @@ Convention : ✅ = passant, mesuré lors des tests de charge (0 erreur fonctionn
 
 **Lecture des résultats**
 - La **lecture scale ×5-6** avec les 16 workers → le clustering fonctionne.
-- L'**écriture reste bornée** (~170-275 req/s) quel que soit le nombre de workers → goulot =
-  **sérialisation des écritures SQLite** (un seul écrivain à la fois, partagé par tous les process).
-- L'**upload de document** abaisse encore le débit (167 vs 275) : coût de l'écriture disque
-  (150 Ko/fichier, potentiellement scannés par l'antivirus) sur le chemin de la requête.
+- L'**écriture reste bornée** (~170-275 req/s) quel que soit le nombre de workers.
 - ✅ Plus **aucune** erreur 500 (retry sur collision de référence).
+
+> ⚠️ **Erratum (établi en Partie E)** : l'attribution initiale de ce plafond d'écriture au
+> mono-écrivain SQLite était **incomplète**. La migration PostgreSQL (écrivains concurrents)
+> a donné exactement le même plafond — la cause dominante est un **plafond environnemental
+> par requête de la machine de dev Windows** (cf. E.3), pas la base de données.
 
 ### CT-11 — Non-régression : collision de référence sous charge
 | | |
@@ -130,27 +132,81 @@ Convention : ✅ = passant, mesuré lors des tests de charge (0 erreur fonctionn
 | 3 | **`busy_timeout` + `synchronous=NORMAL`** | `db.js` | Écritures multi-process sans `SQLITE_BUSY`, moins de fsync |
 | 4 | **Retry sur collision de référence** | `db.js` | 4 erreurs 500 → 0 |
 | 5 | **`DIASPORA_DATA_DIR` surchargeable** | `db.js` | Tests isolés sans polluer les données de dev |
+| 6 | **`NODE_CLUSTER_SCHED_POLICY=rr`** (Windows) | `server.js` | Répartition 92 %/1 worker → uniforme sur 16 |
+| 7 | **Migration SQLite → PostgreSQL** | `db.js`, `index.js` | Partie E |
 
 ---
 
-## Partie D — Recommandations pour la vraie montée en charge
+## Partie E — Migration PostgreSQL (réalisée) et ce qu'elle a révélé
 
-Le mur de débit du **parcours d'onboarding est l'écriture SQLite** (mono-écrivain *by design*).
-Le clustering ne le franchit pas. Par ordre de rapport gain/effort :
+### E.1 Ce qui a été migré
+La base passe de SQLite (`node:sqlite`, synchrone, mono-écrivain) à **PostgreSQL** (`pg`,
+asynchrone, pool de connexions par worker, écrivains réellement concurrents) :
 
-1. **Garder le clustering** — en prod le trafic diaspora est majoritairement en **lecture**
-   (référentiels, suivi de statut, navigation) ; le clustering y apporte un gain massif.
-2. **Sortir les uploads du chemin critique et du disque local** — stockage objet (S3/MinIO) ou
-   au minimum un volume dédié exclu de l'analyse antivirus. Retire le coût disque des requêtes.
-3. **Réduire le nombre d'écritures par parcours** — ex. `otp/verify` fait 2 `UPDATE` séparés
+| Élément | Avant (SQLite) | Après (PostgreSQL) |
+|---|---|---|
+| Driver | `DatabaseSync` — **bloque l'event loop** | `pg` async — l'event loop reste libre |
+| Écritures | 1 écrivain à la fois (WAL) | Concurrentes (MVCC) |
+| Transactions dossier | implicites | `BEGIN/COMMIT` explicites (insert + rattachement docs atomiques) |
+| Payload dossiers | TEXT (JSON stringifié) | **JSONB** (requêtable/indexable) |
+| Bootstrap schéma+seeds | au chargement du module | `pg_advisory_lock` — un seul worker sème, sans course |
+| Config | fichier local | `DATABASE_URL` (+ `PG_POOL_MAX`/worker) |
+| Erreurs async | — | wrapper `ah()` + middleware d'erreur (500 JSON, pas de crash worker) |
+| Unicité référence | retry sur `UNIQUE constraint failed` | retry sur code PG `23505` |
+
+Infrastructure : service `postgres:17-alpine` (healthcheck + volume) dans
+`deploy/test/docker-compose.yml` ; pour le dev sans Docker, `node loadtest/pg-dev.mjs` lance un
+PostgreSQL embarqué et affiche le `DATABASE_URL`.
+
+### E.2 Validation fonctionnelle sur PostgreSQL
+Parcours complet rejoué sur Postgres embarqué : référentiels seedés, OTP send/verify (bon code,
+mauvais code 400, expiration), save-file CNI_RECTO, CLIENT_VIDEO avec repli face-verify
+(`MODELS_MISSING` non bloquant), route documents legacy, création dossier + rattachement
+transactionnel des documents, statuts par référence/email/contact, 404, entreprise. **Tout passe.**
+Sous charge soutenue (300 à 1000 VUs) : **0 erreur**.
+
+### E.3 Découverte majeure : le plafond mesuré était environnemental
+Postgres n'a **pas** déplacé le plafond de ~160 parcours/s. L'investigation systématique a montré :
+
+| Expérience | Résultat | Conclusion |
+|---|---|---|
+| Postgres vs SQLite (même rampe) | ~156 vs ~167 req/s | la base n'est pas le goulot |
+| 2 clients de charge en parallèle | 84 + 90 = 174 req/s | le client de test n'est pas le goulot |
+| `synchronous_commit=off` | ~168 req/s | pas fsync-bound |
+| Répartition cluster (header `X-Worker`) | **92 % sur 1 worker** | bug réel → corrigé (`SCH_RR`) |
+| Après fix RR (répartition 16/16 uniforme) | ~147 req/s | la répartition n'était pas le goulot non plus |
+| POST à vide (sans DB ni disque) | **~465 req/s** | plafond POST de la machine |
+| GET à vide | ~926 req/s | plafond GET de la machine |
+| CPU pendant la charge | node 4 %/1600, Defender 0 % | **machine idle : tout le monde attend** |
+| 1000 VUs | ~159 req/s, latence ×2 | plafond dur par requête, pas une file |
+
+**Conclusion** : cette machine de dev (Windows 11 Enterprise, poste managé — filtrage réseau /
+EDR d'entreprise) impose un **coût fixe par requête POST sur le loopback** qui borne tout test
+d'écriture à ~150-460 req/s quelle que soit l'architecture logicielle. **Les chiffres absolus de
+cette fiche minorent la capacité réelle** ; la mesure de capacité qui fait foi doit être rejouée
+sur la stack Linux (`deploy/test/docker-compose.yml`, qui inclut désormais Postgres) avec le même
+harnais.
+
+Ce que la migration apporte malgré tout, **prouvé ici** : zéro erreur de contention en écriture
+concurrente, intégrité transactionnelle du dossier, event loop libéré (le driver synchrone gelait
+les lectures pendant chaque écriture), et la levée du mur architectural mono-écrivain pour la prod.
+
+---
+
+## Partie F — Recommandations pour la vraie montée en charge
+
+1. ~~Migrer SQLite → PostgreSQL~~ — **fait** (Partie E).
+2. **Rejouer la mesure de capacité sur la stack Linux** (docker compose) avec ce même harnais —
+   les plafonds mesurés ici sont ceux du poste de dev, pas de l'application.
+3. **Sortir les uploads du chemin critique et du disque local** — stockage objet (S3/MinIO) ou
+   volume dédié. Retire le coût disque + scan antivirus des requêtes.
+4. **Garder le clustering avec `NODE_CLUSTER_SCHED_POLICY=rr`** (défaut ailleurs que Windows ;
+   sur Windows sans lui, 92 % du trafic va sur un seul worker).
+5. **Réduire le nombre d'écritures par parcours** — ex. `otp/verify` fait 2 `UPDATE` séparés
    (incrément tentatives + marquage vérifié) fusionnables en un seul.
-4. **`DatabaseSync` bloque l'event loop** : même clusterisée, une écriture contendue gèle les
-   lectures en file sur le même worker. Pour découpler, viser un driver DB **asynchrone**.
-5. **Pour un vrai volume d'écriture diaspora : migrer SQLite → PostgreSQL** (écrivains
-   concurrents + pool de connexions). SQLite est idéal pour ce pilote/dev, single-writer en prod.
-6. **Reverse proxy** (nginx déjà présent dans `deploy/`) en frontal : keep-alive, limitation de
-   débit, TLS ; puis scale **horizontal** (plusieurs nœuds) une fois la base en Postgres.
+6. **Reverse proxy** (nginx déjà présent dans `deploy/`) en frontal, puis scale **horizontal**
+   (plusieurs nœuds Node sur le même Postgres — désormais possible grâce à la migration).
 
-> Capacité actuelle estimée (16 cœurs, 1 nœud) : ~**900 req/s en lecture**, ~**170 soumissions de
-> parcours/s en écriture**, sans erreur. Suffisant pour un pilote ; planifier les points 2 et 5
-> avant une ouverture grand public simultanée.
+> Sur ce poste de dev : ~**900 req/s en lecture**, ~**150-170 soumissions de parcours/s**,
+> 0 erreur jusqu'à 1000 VUs. Ces chiffres sont un **plancher** imposé par l'environnement du
+> poste ; la capacité réelle sur serveur Linux sera mesurée au point 2.

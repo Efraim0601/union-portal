@@ -7,18 +7,24 @@
  * Nombre de workers : CLUSTER_WORKERS (défaut = nombre de cœurs). CLUSTER_WORKERS=1 →
  * process unique, comportement identique à `node index.js` (pratique en dev/débogage).
  *
- * SQLite reste partagé (même fichier WAL) : plusieurs lecteurs simultanés + un écrivain à la
- * fois, busy_timeout (cf. db.js) sérialise proprement les écritures concurrentes des workers.
+ * Base : PostgreSQL (DATABASE_URL), pool de connexions par worker — écrivains réellement
+ * concurrents. Le bootstrap (schéma + seeds) est fait par les workers eux-mêmes, sérialisé
+ * par pg_advisory_lock (cf. index.js) : le premier sème, les autres attendent puis passent.
  */
-import cluster from 'node:cluster';
 import os from 'node:os';
+
+// Round-robin FORCÉ : c'est le défaut partout sauf Windows, où le partage de handle laisse
+// le kernel choisir le worker — mesuré ici : 92% des requêtes sur UN seul worker, ce qui
+// annulait tout le bénéfice du cluster. Avec 'rr' le primaire accepte et distribue
+// équitablement les connexions aux workers. La variable doit être posée AVANT le chargement
+// du module cluster (d'où l'import dynamique ci-dessous) ; `??=` laisse la main à un
+// éventuel réglage explicite de l'environnement.
+process.env.NODE_CLUSTER_SCHED_POLICY ??= 'rr';
+const cluster = (await import('node:cluster')).default;
 
 const WORKERS = Math.max(1, Number(process.env.CLUSTER_WORKERS) || os.availableParallelism());
 
 if (WORKERS > 1 && cluster.isPrimary) {
-  // Crée le schéma + amorce les référentiels UNE fois dans le primaire, avant de forker :
-  // évite que N workers tentent de semer la base en même temps au premier démarrage.
-  await import('./db.js');
   console.log(`[diaspora-otp] primaire ${process.pid} — démarrage de ${WORKERS} workers`);
   for (let i = 0; i < WORKERS; i++) cluster.fork();
   cluster.on('exit', (worker, code, signal) => {

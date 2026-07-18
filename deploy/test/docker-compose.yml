@@ -2,7 +2,7 @@
 # Stack de TEST en ligne — parcours diaspora (front + OCR), sans promote ni le
 # lourd backend diaspora-onboarding. C'est la stack qui exerce le code de CE dépôt :
 #   • gateway       : les 3 fronts Angular (nginx), origine unique
-#   • diaspora-otp  : backend /api/* (Node + SQLite), relaie l'OCR
+#   • diaspora-otp  : backend /api/* (Node + PostgreSQL), relaie l'OCR
 #   • diaspora-ocr  : service OCR (RapidOCR + MRZ ICAO 9303), port 10003
 #
 # Le portail n'est publié QUE sur 127.0.0.1 : il n'est joignable que par le tunnel
@@ -40,6 +40,25 @@ services:
     environment:
       PORT: "10002"
       OCR_SERVICE_URL: http://diaspora-ocr:10003
+      DATABASE_URL: postgres://diaspora:diaspora@postgres:5432/diaspora
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: diaspora
+      POSTGRES_PASSWORD: diaspora
+      POSTGRES_DB: diaspora
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diaspora -d diaspora"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   diaspora-ocr:
@@ -53,3 +72,4 @@ services:
 
 volumes:
   otp_node_modules:
+  pg_data:

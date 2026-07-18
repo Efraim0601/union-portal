@@ -5,6 +5,7 @@ import path from 'node:path';
 import multer from 'multer';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import {
+  initDb, withBootstrapLock,
   createOtpSession, getOtpSession, incrementOtpAttempts, markOtpVerified,
   saveDocument, latestSessionDocument, createApplication, getApplicationById, getApplicationByReference,
   getApplicationByEmail, getApplicationByContact, createEnterpriseApplication,
@@ -15,11 +16,19 @@ import {
   UPLOADS_DIR,
 } from './db.js';
 
+// Express 4 ne rattrape pas les rejets de handlers async : sans ce wrapper, une erreur
+// Postgres (connexion perdue, contrainte…) deviendrait un unhandledRejection qui tue le
+// worker au lieu d'un 500 propre. Toute route qui touche la base passe par `ah()`.
+const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 const app = express();
 app.use((_req, res, next) => {
   // Le dev-server Angular (proxy /api) parle en same-origin ; ce header ne sert
   // qu'à couvrir un appel direct (ex. test manuel via curl/Postman).
   res.setHeader('Access-Control-Allow-Origin', '*');
+  // Identifie le worker du cluster qui a traité la requête (diagnostic de répartition
+  // de charge — la distribution des connexions entre workers est inégale sur Windows).
+  res.setHeader('X-Worker', String(process.pid));
   next();
 });
 
@@ -170,10 +179,13 @@ const NATIONALITIES = [
   { code: 'VE', label: 'Vénézuélienne' }, { code: 'VN', label: 'Vietnamienne' }, { code: 'YE', label: 'Yéménite' },
   { code: 'ZM', label: 'Zambienne' }, { code: 'ZW', label: 'Zimbabwéenne' },
 ];
-// Amorce de la table `agencies` (SQLite) au premier démarrage seulement — modifiable ensuite
-// via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ. Réseau/région à
-// renseigner en admin (non fournis avec cette liste de noms d'agences).
-seedAgenciesIfEmpty([
+// Amorces des référentiels au premier démarrage seulement — modifiables ensuite via
+// /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ. Depuis la migration
+// Postgres les seeds sont ASYNCHRONES : on les diffère dans SEEDS et on les exécute au
+// bootstrap (fin de fichier), sous verrou consultatif pour qu'un seul worker sème la base.
+const SEEDS = [];
+// Réseau/région à renseigner en admin (non fournis avec cette liste de noms d'agences).
+SEEDS.push(() => seedAgenciesIfEmpty([
   { code: 'AGENCE_MOBILE', name: 'FIRST BANK Agence Mobile' },
   { code: 'AHALA', name: 'FIRST BANK Ahala' },
   { code: 'AKWA', name: 'FIRST BANK Akwa' },
@@ -272,45 +284,45 @@ seedAgenciesIfEmpty([
   { code: 'TAMDJA', name: 'FIRST BANK Tamdja' },
   { code: 'YADEME', name: 'FIRST BANK Yademe' },
   { code: 'YASSA', name: 'FIRST BANK Yassa' },
-]);
+]));
 
 // Amorce des listes KYC paramétrables — mêmes valeurs par défaut que mock-api.interceptor.ts
 // (LOOKUP_DEFAULTS), pour un rendu identique que le front tape sur le mock local ou ce vrai
 // backend. Modifiable ensuite via /admin/parametrage (PUT ci-dessous), qui écrase ce jeu de départ.
-seedLookupIfEmpty('sectors', [
+SEEDS.push(() => seedLookupIfEmpty('sectors', [
   { code: 'COMMERCE', name: 'Commerce' }, { code: 'AGRICULTURE', name: 'Agriculture' },
   { code: 'INDUSTRIE', name: 'Industrie' }, { code: 'SERVICES', name: 'Services' },
   { code: 'FONCTION_PUBLIQUE', name: 'Fonction publique' }, { code: 'SANTE', name: 'Santé' },
   { code: 'EDUCATION', name: 'Éducation' }, { code: 'TRANSPORT', name: 'Transport' },
   { code: 'BTP', name: 'BTP / Construction' }, { code: 'AUTRE', name: 'Autre' },
-]);
-seedLookupIfEmpty('professions', [
+]));
+SEEDS.push(() => seedLookupIfEmpty('professions', [
   { code: 'SALARIE_PRIVE', name: 'Salarié du secteur privé' }, { code: 'FONCTIONNAIRE', name: 'Fonctionnaire' },
   { code: 'COMMERCANT', name: 'Commerçant(e)' }, { code: 'ENTREPRENEUR', name: 'Entrepreneur / Chef d’entreprise' },
   { code: 'PROFESSION_LIBERALE', name: 'Profession libérale' }, { code: 'AGRICULTEUR', name: 'Agriculteur / Éleveur' },
   { code: 'ETUDIANT', name: 'Étudiant(e)' }, { code: 'RETRAITE', name: 'Retraité(e)' },
   { code: 'SANS_EMPLOI', name: 'Sans emploi' }, { code: 'AUTRE', name: 'Autre' },
-]);
-seedLookupIfEmpty('income-ranges', [
+]));
+SEEDS.push(() => seedLookupIfEmpty('income-ranges', [
   { code: 'MOINS_500K', name: 'Moins de 500 000' }, { code: '500K_1M', name: '500 000 – 1 000 000' },
   { code: '1M_3M', name: '1 000 000 – 3 000 000' }, { code: 'PLUS_3M', name: 'Plus de 3 000 000' },
-]);
-seedLookupIfEmpty('income-types', [
+]));
+SEEDS.push(() => seedLookupIfEmpty('income-types', [
   { code: 'SALAIRE', name: 'Salaire' }, { code: 'ACTIVITE_INDEPENDANTE', name: 'Activité indépendante / commerciale' },
   { code: 'PENSION', name: 'Pension / Retraite' }, { code: 'REVENUS_LOCATIFS', name: 'Revenus locatifs' },
   { code: 'AUTRE', name: 'Autre' },
-]);
-seedLookupIfEmpty('funds-origins', [
+]));
+SEEDS.push(() => seedLookupIfEmpty('funds-origins', [
   { code: 'SALAIRE', name: 'Salaire' }, { code: 'EPARGNE', name: 'Épargne personnelle' },
   { code: 'HERITAGE', name: 'Héritage' }, { code: 'VENTE_BIEN', name: 'Vente de bien' },
   { code: 'ACTIVITE_COMMERCIALE', name: 'Activité commerciale' }, { code: 'AUTRE', name: 'Autre' },
-]);
-seedLookupIfEmpty('account-objects', [
+]));
+SEEDS.push(() => seedLookupIfEmpty('account-objects', [
   { code: 'EPARGNE', name: 'Épargne' }, { code: 'TRANSACTIONS_COURANTES', name: 'Transactions courantes' },
   { code: 'TRANSFERTS_INTERNATIONAUX', name: 'Transferts internationaux' }, { code: 'INVESTISSEMENT', name: 'Investissement' },
   { code: 'AUTRE', name: 'Autre' },
-]);
-seedSubsectorsIfEmpty([
+]));
+SEEDS.push(() => seedSubsectorsIfEmpty([
   { code: 'COMMERCE_DETAIL', name: 'Commerce de détail', sector_code: 'COMMERCE' },
   { code: 'COMMERCE_GROS', name: 'Commerce de gros', sector_code: 'COMMERCE' },
   { code: 'IMPORT_EXPORT', name: 'Import-export', sector_code: 'COMMERCE' },
@@ -319,8 +331,8 @@ seedSubsectorsIfEmpty([
   { code: 'INDUSTRIE_AGRO', name: 'Agro-industrie', sector_code: 'INDUSTRIE' },
   { code: 'SERVICES_FINANCIERS', name: 'Services financiers', sector_code: 'SERVICES' },
   { code: 'SERVICES_INFORMATIQUE', name: 'Informatique / Numérique', sector_code: 'SERVICES' },
-]);
-seedPackagesIfEmpty([
+]));
+SEEDS.push(() => seedPackagesIfEmpty([
   {
     code: 'BUDGET', name: 'Package Budget', tagline: 'Destiné aux petites bourses',
     currency: 'XAF', opening_fee: 0, subscription_fee: 0, monthly_fee: 0, payment_required: false,
@@ -336,7 +348,7 @@ seedPackagesIfEmpty([
     currency: 'XAF', opening_fee: 0, subscription_fee: 0, monthly_fee: 0, payment_required: false,
     features: ['SMS', 'First Assurance', 'SARA Banking'],
   },
-]);
+]));
 
 const LOOKUP_KINDS = new Set(['sectors', 'professions', 'income-ranges', 'income-types', 'funds-origins', 'account-objects']);
 function requireAdmin(req, res, next) {
@@ -349,35 +361,35 @@ function requireAdmin(req, res, next) {
 
 app.get('/api/countries/active', (_req, res) => res.json(COUNTRIES));
 app.get('/api/nationalities/active', (_req, res) => res.json(NATIONALITIES));
-app.get('/api/agencies/active', (_req, res) => res.json(listAgencies()));
-app.put('/api/agencies/active', (req, res) => {
+app.get('/api/agencies/active', ah(async (_req, res) => res.json(await listAgencies())));
+app.put('/api/agencies/active', ah(async (req, res) => {
   // Même niveau de protection que les autres listes admin (cf. mock-api.interceptor.ts côté
   // front) : présence d'un Authorization Bearer, pas de vérification cryptographique du token —
   // à durcir quand une vraie session admin backend existera.
   if (!req.headers.authorization) return res.status(401).json({ error: 'Authentification requise.' });
   const list = Array.isArray(req.body) ? req.body : [];
-  res.json(replaceAgencies(list));
-});
+  res.json(await replaceAgencies(list));
+}));
 app.get('/api/subsectors/by-sector/:code', (_req, res) => res.json([]));
 app.get('/api/subsectors/grouped', (_req, res) => res.json({}));
 
 // ---- Listes KYC paramétrables (/admin/parametrage) ----
-app.get('/api/lookups/subsectors', (_req, res) => res.json(listSubsectors()));
-app.put('/api/lookups/subsectors', requireAdmin, (req, res) => {
-  res.json(replaceSubsectors(Array.isArray(req.body) ? req.body : []));
-});
-app.get('/api/lookups/packages', (_req, res) => res.json(listPackages()));
-app.put('/api/lookups/packages', requireAdmin, (req, res) => {
-  res.json(replacePackages(Array.isArray(req.body) ? req.body : []));
-});
-app.get('/api/lookups/:kind', (req, res) => {
+app.get('/api/lookups/subsectors', ah(async (_req, res) => res.json(await listSubsectors())));
+app.put('/api/lookups/subsectors', requireAdmin, ah(async (req, res) => {
+  res.json(await replaceSubsectors(Array.isArray(req.body) ? req.body : []));
+}));
+app.get('/api/lookups/packages', ah(async (_req, res) => res.json(await listPackages())));
+app.put('/api/lookups/packages', requireAdmin, ah(async (req, res) => {
+  res.json(await replacePackages(Array.isArray(req.body) ? req.body : []));
+}));
+app.get('/api/lookups/:kind', ah(async (req, res) => {
   if (!LOOKUP_KINDS.has(req.params.kind)) return res.status(404).json({ error: 'Liste inconnue.' });
-  res.json(listLookup(req.params.kind));
-});
-app.put('/api/lookups/:kind', requireAdmin, (req, res) => {
+  res.json(await listLookup(req.params.kind));
+}));
+app.put('/api/lookups/:kind', requireAdmin, ah(async (req, res) => {
   if (!LOOKUP_KINDS.has(req.params.kind)) return res.status(404).json({ error: 'Liste inconnue.' });
-  res.json(replaceLookup(req.params.kind, Array.isArray(req.body) ? req.body : []));
-});
+  res.json(await replaceLookup(req.params.kind, Array.isArray(req.body) ? req.body : []));
+}));
 
 // ---- Session admin (/admin/parametrage) ----
 // Identifiants de dev — mêmes que mock-api.interceptor.ts, à remplacer par un vrai flux
@@ -398,14 +410,14 @@ app.post('/api/admin/login', (req, res) => {
 // par le CLIENT, réponse WhatsappOtpSendResult/VerifyResult) — cf. diaspora-api.service.ts
 // et otp-step.ts (commit 3854a20). Repli `fallback_otp` quand WhatsApp n'a pas livré le
 // message : le code est renvoyé tel quel pour que l'étape ne bloque pas le parcours.
-app.post('/api/pre-onboarding/otp/send', async (req, res) => {
+app.post('/api/pre-onboarding/otp/send', ah(async (req, res) => {
   const { session_id: sessionId, phone } = req.body ?? {};
   if (!sessionId || !phone) return res.status(400).json({ ok: false, message: 'session_id et phone requis' });
 
   const code = generateCode();
 
-  const fallback = (message, whatsapp_delivery_status) => {
-    createOtpSession(sessionId, phone, code, OTP_TTL_MS);
+  const fallback = async (message, whatsapp_delivery_status) => {
+    await createOtpSession(sessionId, phone, code, OTP_TTL_MS);
     res.json({
       ok: true, whatsapp_accepted: false, whatsapp_delivered: false,
       whatsapp_delivery_status, fallback_otp: code, fallback_display: true, message,
@@ -441,28 +453,28 @@ app.post('/api/pre-onboarding/otp/send', async (req, res) => {
     return fallback('Envoi WhatsApp impossible (réseau) — code affiché en repli.');
   }
 
-  createOtpSession(sessionId, phone, code, OTP_TTL_MS);
+  await createOtpSession(sessionId, phone, code, OTP_TTL_MS);
   res.json({ ok: true, whatsapp_accepted: true, whatsapp_delivered: true });
-});
+}));
 
-app.post('/api/pre-onboarding/otp/verify', (req, res) => {
+app.post('/api/pre-onboarding/otp/verify', ah(async (req, res) => {
   const { session_id: sessionId, phone, otp } = req.body ?? {};
   if (!sessionId || !phone || !otp) return res.status(400).json({ ok: false, verified: false, message: 'session_id, phone et otp requis' });
 
-  const entry = getOtpSession(sessionId);
+  const entry = await getOtpSession(sessionId);
   if (!entry || entry.phone !== phone) return res.status(400).json({ ok: false, verified: false, message: 'Session OTP introuvable.' });
   if (Date.now() > entry.otp_expires_at) return res.status(400).json({ ok: false, verified: false, message: 'Code expiré, renvoyez-en un nouveau.' });
   if (entry.otp_attempts >= OTP_MAX_ATTEMPTS) return res.status(429).json({ ok: false, verified: false, message: 'Trop de tentatives, renvoyez un nouveau code.' });
 
-  incrementOtpAttempts(entry.id);
+  await incrementOtpAttempts(entry.id);
   if (entry.otp_code !== otp) return res.status(400).json({ ok: false, verified: false, message: 'Code invalide.' });
 
-  markOtpVerified(entry.id);
+  await markOtpVerified(entry.id);
   res.json({
     ok: true, verified: true, session_id: sessionId,
     whatsapp_otp_verified: true, whatsapp_otp_verified_at: new Date().toISOString(),
   });
-});
+}));
 
 // ---- Pré-onboarding : OCR (une face par appel) ----
 // Aligné sur le VRAI backend FastAPI : le front (diaspora-api.service.ts) poste UNE image par appel
@@ -514,7 +526,7 @@ function toFaceMatch(fv) {
  *  Best-effort : toute erreur (service down, modèle absent, pas de référence) => verdict « indisponible »
  *  (status MODELS_MISSING), que le front traite déjà en soft-gate non bloquant. */
 async function runSessionFaceMatch(sessionId, videoBuffer, videoName, videoMime) {
-  const ref = latestSessionDocument(sessionId, 'CNI_RECTO');
+  const ref = await latestSessionDocument(sessionId, 'CNI_RECTO');
   if (!ref) return { status: 'MODELS_MISSING', recognizer: 'insightface', identity: null };
   const idBuffer = await fs.promises.readFile(ref.file_path);
   const fd = new FormData();
@@ -528,7 +540,7 @@ async function runSessionFaceMatch(sessionId, videoBuffer, videoName, videoMime)
 // ---- Pré-onboarding : enregistrement d'un fichier (aligné sur POST /pre-onboarding/save-file) ----
 // Le front poste ici recto/verso CNI, selfie (CLIENT_PHOTO), vidéo (CLIENT_VIDEO) et justificatifs.
 // L'enregistrement d'un CLIENT_VIDEO déclenche la comparaison faciale (face-verify) contre CNI_RECTO.
-app.post('/api/pre-onboarding/save-file', upload.single('file'), async (req, res) => {
+app.post('/api/pre-onboarding/save-file', upload.single('file'), ah(async (req, res) => {
   const sessionId = req.body?.session_id;
   const documentType = req.body?.document_type || 'DOCUMENT';
   if (!req.file) return res.status(400).json({ error: 'file requis' });
@@ -543,7 +555,7 @@ app.post('/api/pre-onboarding/save-file', upload.single('file'), async (req, res
     console.error('[diaspora-otp] échec écriture document', err);
     return res.status(500).json({ error: 'Échec de l’enregistrement du document.' });
   }
-  saveDocument({
+  await saveDocument({
     sessionId, documentType, filePath,
     originalName: req.file.originalname, mimeType: req.file.mimetype, sizeBytes: req.file.size,
   });
@@ -561,10 +573,10 @@ app.post('/api/pre-onboarding/save-file', upload.single('file'), async (req, res
     }
   }
   res.json(payload);
-});
+}));
 
 // ---- Pré-onboarding : documents (recto/verso, selfie, vidéo, justificatifs) — route legacy ----
-app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), async (req, res) => {
+app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), ah(async (req, res) => {
   const { sessionId } = req.params;
   const documentType = req.body?.document_type || 'DOCUMENT';
   if (!req.file) return res.status(400).json({ error: 'file requis' });
@@ -582,7 +594,7 @@ app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), asyn
     return res.status(500).json({ error: 'Échec de l’enregistrement du document.' });
   }
 
-  saveDocument({
+  await saveDocument({
     sessionId,
     documentType,
     filePath,
@@ -591,35 +603,35 @@ app.post('/api/pre-onboarding/:sessionId/documents', upload.single('file'), asyn
     sizeBytes: req.file.size,
   });
   res.json({ received: true });
-});
+}));
 
 // ---- Dossiers particulier ----
-app.post('/api/applications', (req, res) => {
-  const created = createApplication(req.body ?? {});
+app.post('/api/applications', ah(async (req, res) => {
+  const created = await createApplication(req.body ?? {});
   res.status(201).json(created);
-});
+}));
 // Routes spécifiques d'abord — sinon '/:id' (générique, un seul segment) les intercepte
 // avant qu'elles soient atteintes (Express matche dans l'ordre de déclaration).
-app.get('/api/applications/status-by-email', (req, res) => {
-  const found = getApplicationByEmail(String(req.query.email ?? ''));
+app.get('/api/applications/status-by-email', ah(async (req, res) => {
+  const found = await getApplicationByEmail(String(req.query.email ?? ''));
   if (!found) return res.status(404).json({ error: 'Dossier introuvable.' });
   res.json(statusView(found));
-});
-app.get('/api/applications/status-by-contact', (req, res) => {
-  const found = getApplicationByContact(String(req.query.identifier ?? ''));
+}));
+app.get('/api/applications/status-by-contact', ah(async (req, res) => {
+  const found = await getApplicationByContact(String(req.query.identifier ?? ''));
   if (!found) return res.status(404).json({ error: 'Dossier introuvable.' });
   res.json(statusView(found));
-});
-app.get('/api/applications/status/:reference', (req, res) => {
-  const found = getApplicationByReference(req.params.reference);
+}));
+app.get('/api/applications/status/:reference', ah(async (req, res) => {
+  const found = await getApplicationByReference(req.params.reference);
   if (!found) return res.status(404).json({ error: 'Dossier introuvable.' });
   res.json(statusView(found));
-});
-app.get('/api/applications/:id', (req, res) => {
-  const found = getApplicationById(Number(req.params.id));
+}));
+app.get('/api/applications/:id', ah(async (req, res) => {
+  const found = await getApplicationById(Number(req.params.id));
   if (!found) return res.status(404).json({ error: 'Dossier introuvable.' });
   res.json(found);
-});
+}));
 
 function statusView(application) {
   return {
@@ -630,10 +642,35 @@ function statusView(application) {
 }
 
 // ---- Entreprise (squelette) ----
-app.post('/api/enterprise-applications', (req, res) => {
-  const created = createEnterpriseApplication(req.body ?? {});
+app.post('/api/enterprise-applications', ah(async (req, res) => {
+  const created = await createEnterpriseApplication(req.body ?? {});
   res.status(201).json(created);
+}));
+
+// Filet de sécurité : toute erreur non gérée d'un handler async (via ah) atterrit ici
+// en 500 JSON au lieu de tuer le worker par unhandledRejection.
+app.use((err, _req, res, _next) => {
+  console.error('[diaspora-otp] erreur non gérée', err);
+  if (!res.headersSent) res.status(500).json({ error: 'Erreur interne du serveur.' });
 });
+
+// Bootstrap : schéma + seeds AVANT d'accepter du trafic. pg_advisory_lock garantit qu'un
+// seul worker exécute le DDL/seed au premier démarrage — les autres attendent puis passent
+// (les seeds sont des no-op si les tables sont déjà remplies).
+try {
+  await withBootstrapLock(async () => {
+    await initDb();
+    for (const seed of SEEDS) await seed();
+  });
+} catch (err) {
+  console.error(
+    '[diaspora-otp] PostgreSQL inaccessible (' + (err.code ?? err.message) + ').\n' +
+    '  DATABASE_URL=' + (process.env.DATABASE_URL || '(non défini)') + '\n' +
+    '  → dev sans Docker : `node loadtest/pg-dev.mjs` puis reprendre le DATABASE_URL affiché (.env)\n' +
+    '  → via Docker      : `docker compose -f deploy/test/docker-compose.yml up -d postgres`',
+  );
+  process.exit(1);
+}
 
 app.listen(PORT, () => {
   console.log(`[diaspora-otp] écoute sur http://localhost:${PORT}`);

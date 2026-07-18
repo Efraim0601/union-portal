@@ -7,19 +7,25 @@ temps réel (débit, latence p50/p95/p99, taux d'erreur).
 ## Lancer une instance de test isolée (mode repli sûr)
 
 ⚠️ **Toujours** vider les identifiants Callbell pour ne pas envoyer de vrais WhatsApp en masse,
-et pointer une base de données jetable (`DIASPORA_DATA_DIR`) pour ne pas polluer les données de dev.
+et pointer une base **jetable** pour ne pas polluer les données de dev.
 
 ```bash
 cd server/diaspora-otp
 
-# instance de test : port 10099, Callbell désactivé (fallback_otp), base jetable, 16 workers
+# 1) PostgreSQL embarqué (terminal 1) — affiche le DATABASE_URL à utiliser
+node loadtest/pg-dev.mjs
+
+# 2) instance de test (terminal 2) : Callbell désactivé (fallback_otp), 16 workers
+DATABASE_URL="postgres://diaspora:diaspora@localhost:15432/diaspora" \
 DIASPORA_DATA_DIR="$TEMP/diaspora-loadtest-data" \
-PORT=10099 CALLBELL_API_KEY="" CALLBELL_CHANNEL_UUID="" CLUSTER_WORKERS=16 \
+PORT=10099 CALLBELL_API_KEY="" CALLBELL_CHANNEL_UUID="" CLUSTER_WORKERS=16 PG_POOL_MAX=5 \
 node server.js
 ```
 
 - `CALLBELL_API_KEY=""` → `/otp/send` renvoie `fallback_otp`, **zéro** appel WhatsApp réel.
-- `DIASPORA_DATA_DIR` → base + uploads dans un dossier jetable (défaut : `./data`).
+- `DATABASE_URL` → base Postgres cible (embarquée ici ; service `postgres` du compose sinon).
+- `PG_POOL_MAX` → connexions **par worker** (16×5=80, sous le `max_connections=100` par défaut).
+- `DIASPORA_DATA_DIR` → répertoire des uploads, jetable (défaut : `./data`).
 - `CLUSTER_WORKERS` → nombre de process (défaut = nombre de cœurs ; `1` = mono-process).
 
 ## Lancer la charge
@@ -54,9 +60,11 @@ node loadtest.mjs
 
 - **Débit qui plafonne quand les VUs montent** = goulot sérialisé (le système ne va pas plus
   vite, la charge s'accumule en file → la latence explose).
-- Comparer `read` (plafond lecture) et `journey`/`otp` (plafond écriture) **isole** la cause :
-  ici la lecture monte à ~930 req/s, l'écriture bute à ~170-275 req/s → **c'est l'écriture
-  SQLite (un seul écrivain) qui borne**, pas le CPU.
+- Comparer `read` / `otp` / `journey` isole la couche en cause (réseau, DB, disque).
+- ⚠️ **Sur un poste Windows managé**, l'environnement (filtrage réseau/EDR) impose un coût fixe
+  par requête qui écrase les différences applicatives — cf. Partie E de la fiche. Les mesures
+  qui font foi se font sur la stack Linux (`deploy/test/docker-compose.yml`).
+- Le header `X-Worker` (PID) permet de vérifier la répartition entre workers du cluster.
 
 Voir [`FICHE-TEST-METIER.md`](./FICHE-TEST-METIER.md) pour le protocole complet, les résultats
-mesurés et les recommandations de scaling.
+mesurés, la migration PostgreSQL et les recommandations de scaling.
