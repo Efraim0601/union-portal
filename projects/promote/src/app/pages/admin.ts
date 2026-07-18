@@ -151,6 +151,14 @@ const PAGE = 10;
                     <label class="lab">Téléphone @if (nRole() === 'AGENT') { <span style="color:var(--primary)">*</span> }</label>
                     <input class="in" placeholder="6XXXXXXXX" inputmode="numeric" [value]="nPhone()" (input)="nPhone.set(val($event))">
                   </div>
+                  <div>
+                    <label class="lab">Rattacher à (équipe)</label>
+                    <select class="in" [value]="nParent()" (change)="nParent.set(val($event))">
+                      <option value="">— Aucun (non rattaché)</option>
+                      @for (p of parentOptions(); track p.id) { <option [value]="p.id">{{ p.name }} · {{ p.role }}</option> }
+                    </select>
+                    <div style="font-size:11px;color:var(--muted);margin-top:3px">Le responsable sous lequel placer ce compte, pour que ses ventes remontent dans les stats de l'équipe.</div>
+                  </div>
                 </div>
                 @if (createMsg()) { <div class="alert-success" style="margin-bottom:10px">✓ {{ createMsg() }}</div> }
                 @if (createErr()) { <div class="alert-error" style="margin-bottom:10px">{{ createErr() }}</div> }
@@ -578,6 +586,14 @@ export class AdminPage {
   txImgError = signal<Record<string, boolean>>({});
   showCreate = signal(false);
   nName = signal(''); nEmail = signal(''); nRole = signal('AGENT'); nAgency = signal(''); nPhone = signal('');
+  // Rattachement hiérarchique optionnel choisi dès la création (parentUserId) : câble l'équipe
+  // immédiatement, sans passer par le glisser-déposer de l'organigramme. Les stats d'une vente
+  // remontent ensuite le sous-arbre (commercial → chef d'équipe → superviseur → manager).
+  nParent = signal('');
+  // Parents possibles = comptes de la chaîne d'encadrement déjà chargés dans la liste utilisateurs.
+  parentOptions = computed(() => this.usersList()
+    .filter((u) => ['ADMIN', 'MANAGER', 'SUPERVISEUR', 'CHEF_EQUIPE'].includes(u.role))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '')));
   createMsg = signal(''); createErr = signal('');
   // inline edit of an existing user
   editId = signal<string | null>(null);
@@ -678,9 +694,9 @@ export class AdminPage {
     const phone = this.nPhone().replace(/\D/g, '').slice(-9);
     if (this.nRole() === 'AGENT' && !/^6\d{8}$/.test(phone)) { this.createErr.set(this.reasonLabel('agent_phone_required')); return; }
     if (phone && !/^6\d{8}$/.test(phone)) { this.createErr.set(this.reasonLabel('phone_required')); return; }
-    const req: CreateUserRequest = { name: this.nName().trim(), email: this.nEmail().trim(), role: this.nRole(), roles: [this.nRole()], agency: this.nAgency().trim() || undefined, phone: phone || undefined };
+    const req: CreateUserRequest = { name: this.nName().trim(), email: this.nEmail().trim(), role: this.nRole(), roles: [this.nRole()], agency: this.nAgency().trim() || undefined, phone: phone || undefined, parentUserId: this.nParent() || undefined };
     this.api.createUser(req).subscribe({
-      next: (u) => { this.createMsg.set(this.i18n.t('adm_created')); this.usersList.set([u, ...this.usersList()]); this.nName.set(''); this.nEmail.set(''); this.nAgency.set(''); this.nPhone.set(''); },
+      next: (u) => { this.createMsg.set(this.i18n.t('adm_created')); this.usersList.set([u, ...this.usersList()]); this.nName.set(''); this.nEmail.set(''); this.nAgency.set(''); this.nPhone.set(''); this.nParent.set(''); },
       error: (e) => this.createErr.set(this.reasonLabel(e?.error?.error || e?.error?.message || 'Erreur')),
     });
   }

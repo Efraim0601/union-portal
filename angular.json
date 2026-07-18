@@ -137,7 +137,8 @@
           "defaultConfiguration": "development",
           "options": {
             "port": 4200,
-            "proxyConfig": "projects/shell/proxy.conf.js"
+            "proxyConfig": "projects/shell/proxy.conf.js",
+            "allowedHosts": true
           }
         }
       }

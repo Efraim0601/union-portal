@@ -7,6 +7,8 @@ export const routes: Routes = [
   { path: 'onboarding', loadComponent: () => import('./pages/onboarding-welcome').then((m) => m.DiasporaOnboardingWelcomePage) },
   { path: 'onboarding/particulier', loadComponent: () => import('./pages/onboarding').then((m) => m.DiasporaOnboardingPage) },
   { path: 'onboarding/entreprise', loadComponent: () => import('./pages/onboarding-enterprise').then((m) => m.DiasporaOnboardingEnterprisePage) },
+  // Route ADDITIVE (optionnelle) : embarque le parcours legacy FastAPI en iframe.
+  { path: 'onboarding-legacy', loadComponent: () => import('./pages/legacy-onboarding').then((m) => m.DiasporaLegacyOnboardingPage) },
   { path: 'status', loadComponent: () => import('./pages/status').then((m) => m.DiasporaStatusPage) },
   { path: 'admin/login', loadComponent: () => import('./pages/admin-login').then((m) => m.DiasporaAdminLoginPage) },
   {
