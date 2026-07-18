@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
+import nodemailer from 'nodemailer';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import {
   initDb, withBootstrapLock,
@@ -68,6 +69,50 @@ const CALLBELL_SEND_URL = 'https://api.callbell.eu/v1/messages/send';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
+
+// ---- Email OTP (OTP_DUAL_CHANNEL_EMAIL_V1, parité avec le monolithe FastAPI) ----
+// Mêmes variables SMTP_* que app/services/notification_service.py du monolithe
+// (diaspora-onboarding) : la config se copie telle quelle d'un backend à l'autre.
+// Sans SMTP_HOST, l'email est simplement désactivé (email_sent: false, jamais bloquant).
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
+const SMTP_TLS = (process.env.SMTP_TLS || 'true').toLowerCase() !== 'false';
+const mailTransport = SMTP_HOST
+  ? nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: false, // STARTTLS (Office365) et non TLS implicite — comme le monolithe (starttls)
+      requireTLS: SMTP_TLS,
+      auth: SMTP_USER && SMTP_PASSWORD ? { user: SMTP_USER, pass: SMTP_PASSWORD } : undefined,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000, // le monolithe utilise timeout=15s
+    })
+  : null;
+if (!mailTransport) {
+  console.warn('[diaspora-otp] SMTP_HOST absent — envoi du code OTP par email désactivé (email_sent restera false).');
+}
+
+/** Envoie le code par email — best-effort, jamais bloquant (parité monolithe : sujet,
+ *  corps et sémantique identiques ; toute erreur => false, le parcours continue). */
+async function sendOtpEmail(email, code) {
+  if (!mailTransport || !email || !email.includes('@')) return false;
+  try {
+    await mailTransport.sendMail({
+      from: SMTP_FROM,
+      to: email,
+      subject: 'Votre code de vérification - Afriland First Bank',
+      text: `Votre code de vérification Afriland First Bank est : ${code}. Il expire dans 5 minutes. Ne partagez pas ce code.`,
+    });
+    return true;
+  } catch (err) {
+    console.error('[diaspora-otp] envoi email OTP échoué :', err.message);
+    return false;
+  }
+}
 
 // Microservice de vérification faciale (InsightFace) — comparaison CNI ↔ vidéo/selfie.
 const FACE_VERIFY_URL = process.env.FACE_VERIFY_URL || 'http://localhost:8000';
@@ -411,50 +456,77 @@ app.post('/api/admin/login', (req, res) => {
 // et otp-step.ts (commit 3854a20). Repli `fallback_otp` quand WhatsApp n'a pas livré le
 // message : le code est renvoyé tel quel pour que l'étape ne bloque pas le parcours.
 app.post('/api/pre-onboarding/otp/send', ah(async (req, res) => {
-  const { session_id: sessionId, phone } = req.body ?? {};
+  const { session_id: sessionId, phone, email } = req.body ?? {};
   if (!sessionId || !phone) return res.status(400).json({ ok: false, message: 'session_id et phone requis' });
 
   const code = generateCode();
 
-  const fallback = async (message, whatsapp_delivery_status) => {
-    await createOtpSession(sessionId, phone, code, OTP_TTL_MS);
-    res.json({
-      ok: true, whatsapp_accepted: false, whatsapp_delivered: false,
-      whatsapp_delivery_status, fallback_otp: code, fallback_display: true, message,
-    });
+  // WhatsApp (Callbell) — best-effort. Les statuts d'échec reprennent le vocabulaire du
+  // monolithe (CONFIGURATION_INCOMPLETE / CALLBELL_HTTP_ERROR / CALLBELL_ERROR) : le front
+  // (otp-step.ts) les connaît déjà pour décider si WhatsApp a réellement abouti.
+  const sendWhatsapp = async () => {
+    if (!CALLBELL_API_KEY || !CALLBELL_CHANNEL_UUID) {
+      return { delivered: false, status: 'CONFIGURATION_INCOMPLETE' };
+    }
+    try {
+      const callbellRes = await fetch(CALLBELL_SEND_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${CALLBELL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: phone,
+          from: CALLBELL_FROM,
+          type: 'text',
+          channel_uuid: CALLBELL_CHANNEL_UUID,
+          content: { text: `Votre code de vérification Afriland First Bank est : ${code}\nIl expire dans 5 minutes.` },
+        }),
+      });
+      if (!callbellRes.ok) {
+        const detail = await callbellRes.text().catch(() => '');
+        console.error('[diaspora-otp] Callbell a refusé l’envoi', callbellRes.status, detail);
+        return { delivered: false, status: 'CALLBELL_HTTP_ERROR' };
+      }
+      return { delivered: true };
+    } catch (err) {
+      console.error('[diaspora-otp] Erreur réseau vers Callbell', err);
+      return { delivered: false, status: 'CALLBELL_ERROR' };
+    }
   };
 
-  if (!CALLBELL_API_KEY || !CALLBELL_CHANNEL_UUID) {
-    return fallback('Callbell non configuré côté serveur (voir .env) — code affiché en repli.');
-  }
-
-  try {
-    const callbellRes = await fetch(CALLBELL_SEND_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${CALLBELL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: phone,
-        from: CALLBELL_FROM,
-        type: 'text',
-        channel_uuid: CALLBELL_CHANNEL_UUID,
-        content: { text: `Votre code de vérification Afriland First Bank est : ${code}\nIl expire dans 5 minutes.` },
-      }),
-    });
-    if (!callbellRes.ok) {
-      const detail = await callbellRes.text().catch(() => '');
-      console.error('[diaspora-otp] Callbell a refusé l’envoi', callbellRes.status, detail);
-      return fallback('Envoi WhatsApp refusé par Callbell — code affiché en repli.', String(callbellRes.status));
-    }
-  } catch (err) {
-    console.error('[diaspora-otp] Erreur réseau vers Callbell', err);
-    return fallback('Envoi WhatsApp impossible (réseau) — code affiché en repli.');
-  }
+  // Dual-canal (OTP_DUAL_CHANNEL_EMAIL_V1) : WhatsApp ET email partent en parallèle dès
+  // que l'adresse est fournie. Chaque canal est best-effort ; le code n'est affiché en
+  // repli à l'écran que si AUCUN canal n'a abouti (parité monolithe FastAPI).
+  const [whatsapp, emailSent] = await Promise.all([sendWhatsapp(), sendOtpEmail(email, code)]);
 
   await createOtpSession(sessionId, phone, code, OTP_TTL_MS);
-  res.json({ ok: true, whatsapp_accepted: true, whatsapp_delivered: true });
+
+  let message;
+  const fallbackFields = {};
+  if (whatsapp.delivered && emailSent) {
+    message = 'Code OTP reçu sur WhatsApp et envoyé par email.';
+  } else if (whatsapp.delivered) {
+    message = 'Code OTP reçu sur WhatsApp.';
+  } else if (emailSent) {
+    message =
+      "Le message WhatsApp n'a pas pu être remis. " +
+      'Votre code vous a été envoyé par email — vérifiez votre boîte de réception.';
+  } else {
+    message = "Ni WhatsApp ni email n'ont pu être remis — code affiché en repli.";
+    fallbackFields.fallback_otp = code;
+    fallbackFields.fallback_display = true;
+  }
+
+  res.json({
+    ok: true,
+    message,
+    email_sent: emailSent,
+    whatsapp_accepted: whatsapp.delivered,
+    whatsapp_delivered: whatsapp.delivered,
+    whatsapp_delivery_status: whatsapp.status,
+    ...fallbackFields,
+  });
 }));
 
 app.post('/api/pre-onboarding/otp/verify', ah(async (req, res) => {

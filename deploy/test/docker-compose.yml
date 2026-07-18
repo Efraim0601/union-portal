@@ -41,6 +41,17 @@ services:
       PORT: "10002"
       OCR_SERVICE_URL: http://diaspora-ocr:10003
       DATABASE_URL: postgres://diaspora:diaspora@postgres:5432/diaspora
+      # OTP par WhatsApp (Callbell) + email (SMTP) : valeurs lues dans le .env posé à côté
+      # de CE compose sur le serveur (jamais dans git). Vides => canal désactivé, non bloquant.
+      CALLBELL_API_KEY: ${CALLBELL_API_KEY:-}
+      CALLBELL_CHANNEL_UUID: ${CALLBELL_CHANNEL_UUID:-}
+      CALLBELL_FROM: ${CALLBELL_FROM:-whatsapp}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
     depends_on:
       postgres:
         condition: service_healthy
