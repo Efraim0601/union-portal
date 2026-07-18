@@ -100,16 +100,23 @@ const REVIEW_HIDDEN_KEYS = new Set([
   providers: [OcrPrefillService],
   template: `
     <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;">
-      <div style="max-width:1040px;margin:0 auto;padding:32px 20px 60px;">
+      <div class="onb-page" style="max-width:1040px;margin:0 auto;padding:32px 20px 60px;">
         <!-- En-tête -->
         <div style="margin-bottom:28px;">
           <div style="font-size:10px;font-weight:700;letter-spacing:1.8px;color:#C8102E;text-transform:uppercase;margin-bottom:6px;">
             Ouverture de compte à distance
           </div>
-          <h1 style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:500;color:#151821;letter-spacing:-0.5px;margin:0;">
+          <h1 class="onb-title" style="font-family:'Source Serif 4',Georgia,serif;font-size:28px;font-weight:500;color:#151821;letter-spacing:-0.5px;margin:0;">
             {{ step().title }}
           </h1>
           <p style="font-size:13px;color:#6B7280;margin-top:6px;">{{ step().description }}</p>
+          <!-- Progression compacte, uniquement quand le rail latéral est masqué (mobile). -->
+          <div class="onb-mobile-progress" style="display:none;margin-top:12px;">
+            <div style="height:4px;background:rgba(20,20,30,0.08);border-radius:999px;overflow:hidden;">
+              <div [style.width.%]="(current() / steps.length) * 100" style="height:100%;background:#C8102E;border-radius:999px;transition:width 0.3s;"></div>
+            </div>
+            <p style="font-size:11px;color:#6B7280;margin:6px 0 0;">Étape {{ current() }} sur {{ steps.length }}</p>
+          </div>
         </div>
 
         <div style="display:grid;gap:32px;grid-template-columns:1fr;" class="onb-grid">
@@ -143,11 +150,11 @@ const REVIEW_HIDDEN_KEYS = new Set([
               @case ('review') {
                 <onb-section-card [section]="current()" title="Récapitulatif" subtitle="Vérifiez vos informations avant l'envoi.">
                   <form (submit)="onSubmitForm($event)">
-                    <dl style="display:grid;gap:12px;grid-template-columns:1fr 1fr;">
+                    <dl class="onb-review" style="display:grid;gap:12px;grid-template-columns:1fr 1fr;">
                       @for (e of filled(); track e[0]) {
-                        <div>
+                        <div style="min-width:0;">
                           <dt style="font-size:10px;font-weight:600;letter-spacing:0.4px;color:#9CA3AF;text-transform:uppercase;">{{ label(e[0]) }}</dt>
-                          <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;">{{ e[1] }}</dd>
+                          <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;overflow-wrap:anywhere;">{{ e[1] }}</dd>
                         </div>
                       }
                     </dl>
@@ -236,14 +243,28 @@ const REVIEW_HIDDEN_KEYS = new Set([
     </div>
 
     <style>
+      /* Un enfant de grille a min-width:auto : tout contenu à largeur intrinsèque fixe
+         (cadre caméra 420px, ligne indicatif+numéro…) élargirait la colonne au-delà du
+         viewport mobile → débordement horizontal de toute la page. */
+      .onb-grid > * { min-width: 0; }
       @media (min-width: 900px) {
         .onb-grid { grid-template-columns: 240px 1fr !important; }
         /* Rail des étapes fixe pendant le défilement du contenu (align-self:start
            laisse au sticky la marge nécessaire, sinon l'aside s'étire sur toute la ligne). */
         .onb-rail { position: sticky; top: 24px; align-self: start; }
       }
-      @media (max-width: 899px) { .onb-rail { display: none; } }
-      @media (max-width: 640px) { .onb-fields { grid-template-columns: 1fr !important; } }
+      @media (max-width: 899px) {
+        .onb-rail { display: none; }
+        .onb-mobile-progress { display: block !important; }
+      }
+      @media (max-width: 640px) {
+        .onb-fields { grid-template-columns: 1fr !important; }
+        .onb-review { grid-template-columns: 1fr !important; }
+      }
+      @media (max-width: 480px) {
+        .onb-page { padding: 24px 14px 48px !important; }
+        .onb-title { font-size: 23px !important; }
+      }
     </style>
   `,
 })

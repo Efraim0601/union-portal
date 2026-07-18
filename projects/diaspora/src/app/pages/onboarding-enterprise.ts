@@ -54,11 +54,11 @@ const ENTERPRISE_DOCS = [
             @switch (step().kind) {
               @case ('review') {
                 <onb-section-card [section]="current()" title="Récapitulatif" subtitle="Vérifiez vos informations avant l'envoi.">
-                  <dl style="display:grid;gap:12px;grid-template-columns:1fr 1fr;">
+                  <dl class="onb-review" style="display:grid;gap:12px;grid-template-columns:1fr 1fr;">
                     @for (e of filled(); track e[0]) {
-                      <div>
+                      <div style="min-width:0;">
                         <dt style="font-size:10px;font-weight:600;letter-spacing:0.4px;color:#9CA3AF;text-transform:uppercase;">{{ label(e[0]) }}</dt>
-                        <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;">{{ e[1] }}</dd>
+                        <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;overflow-wrap:anywhere;">{{ e[1] }}</dd>
                       </div>
                     }
                   </dl>
@@ -100,9 +100,14 @@ const ENTERPRISE_DOCS = [
     </div>
 
     <style>
+      /* min-width:auto des enfants de grille : un contenu à largeur fixe déborderait du viewport mobile. */
+      .onb-grid > * { min-width: 0; }
       @media (min-width: 900px) { .onb-grid { grid-template-columns: 240px 1fr !important; } }
       @media (max-width: 899px) { .onb-rail { display: none; } }
-      @media (max-width: 640px) { .onb-fields { grid-template-columns: 1fr !important; } }
+      @media (max-width: 640px) {
+        .onb-fields { grid-template-columns: 1fr !important; }
+        .onb-review { grid-template-columns: 1fr !important; }
+      }
     </style>
   `,
 })

@@ -57,7 +57,7 @@ const RESEND_COOLDOWN_S = 60;
 
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
           <button type="button" (click)="sendOtp()" [disabled]="sending() || cooldown() > 0"
-            style="display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:150px;min-height:38px;padding:10px 18px;border-radius:8px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;font-size:12.5px;font-weight:600;cursor:pointer;"
+            style="display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:150px;min-height:44px;padding:10px 18px;border-radius:8px;border:1px solid rgba(20,20,30,0.14);background:#fff;color:#151821;font-size:12.5px;font-weight:600;cursor:pointer;touch-action:manipulation;"
             [style.opacity]="cooldown() > 0 ? 0.6 : 1">
             @if (sending()) { <onb-dots color="#C8102E" /> } @else {
               {{ !sent() ? 'Envoyer le code' : (cooldown() > 0 ? 'Renvoyer (' + cooldown() + 's)' : 'Renvoyer le code') }}

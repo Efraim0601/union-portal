@@ -61,8 +61,10 @@ const T: Record<string, string> = {
   template: `
     @if (imageData) {
       <div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px solid rgba(20,20,30,0.10);border-radius:12px;">
-        <div [style.width.px]="boxW" [style.maxWidth]="'100%'" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
-             style="position:relative;overflow:hidden;box-shadow:0 8px 20px rgba(20,20,30,0.10);">
+        <!-- width:100% + max-width (et non width:{{boxW}}px) : une largeur fixe compte dans la
+             taille intrinsèque et fait déborder la colonne de grille du parent sur mobile. -->
+        <div [style.maxWidth.px]="boxW" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
+             style="width:100%;position:relative;overflow:hidden;box-shadow:0 8px 20px rgba(20,20,30,0.10);">
           @if (isImagePreview()) {
             <img [src]="imageData" alt="capture" style="width:100%;height:100%;object-fit:cover" />
           } @else {
@@ -82,11 +84,11 @@ const T: Record<string, string> = {
           </p>
         }
         <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-          <button type="button" (click)="retakePhoto()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;">
+          <button type="button" (click)="retakePhoto()" style="display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 14px;font-size:13px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;touch-action:manipulation;">
             <dsp-ic name="refresh" [size]="16"></dsp-ic> {{ T['selfie_retake'] }}
           </button>
           @if (allowGallery) {
-            <button type="button" (click)="pickFromGallery()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;">
+            <button type="button" (click)="pickFromGallery()" style="display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 14px;font-size:13px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;touch-action:manipulation;">
               <dsp-ic name="image" [size]="16"></dsp-ic> {{ T['cam_gallery'] }}
             </button>
           }
@@ -94,8 +96,8 @@ const T: Record<string, string> = {
       </div>
     } @else {
       <div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px solid rgba(20,20,30,0.10);border-radius:12px;">
-        <div [style.width.px]="boxW" [style.maxWidth]="'100%'" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
-             style="position:relative;overflow:hidden;background:#151821;display:flex;align-items:center;justify-content:center;">
+        <div [style.maxWidth.px]="boxW" [style.aspectRatio]="boxW + ' / ' + boxH" [style.borderRadius]="round ? '50%' : '16px'"
+             style="width:100%;position:relative;overflow:hidden;background:#151821;display:flex;align-items:center;justify-content:center;">
           <video #video autoplay playsinline muted
                  [style.display]="streaming() ? 'block' : 'none'"
                  [style.transform]="facing === 'user' ? 'scaleX(-1)' : 'none'"
@@ -134,25 +136,25 @@ const T: Record<string, string> = {
         }
         <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
           @if (!streaming()) {
-            <button type="button" (click)="start()" [disabled]="starting()" style="width:auto;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+            <button type="button" (click)="start()" [disabled]="starting()" style="width:auto;min-height:44px;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;">
               <dsp-ic name="camera" [size]="18"></dsp-ic> {{ starting() ? T['selfie_shooting'] : T['cam_open'] }}
             </button>
             @if (allowGallery) {
-              <button type="button" (click)="pickFromGallery()" style="width:auto;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;">
+              <button type="button" (click)="pickFromGallery()" style="width:auto;min-height:44px;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;touch-action:manipulation;">
                 <dsp-ic name="image" [size]="16"></dsp-ic> {{ T['cam_gallery'] }}
               </button>
             }
           } @else {
-            <button type="button" (click)="shoot()" [disabled]="shooting() || !canShoot()" style="width:auto;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+            <button type="button" (click)="shoot()" [disabled]="shooting() || !canShoot()" style="width:auto;min-height:44px;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;">
               <dsp-ic name="camera" [size]="18"></dsp-ic> {{ T['cam_take'] }}
             </button>
             @if (allowGallery) {
-              <button type="button" (click)="pickFromGallery()" style="width:auto;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;">
+              <button type="button" (click)="pickFromGallery()" style="width:auto;min-height:44px;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;touch-action:manipulation;">
                 <dsp-ic name="image" [size]="16"></dsp-ic> {{ T['cam_gallery'] }}
               </button>
             }
             @if (allowFlip) {
-              <button type="button" (click)="flip()" style="width:auto;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;">
+              <button type="button" (click)="flip()" style="width:auto;min-height:44px;padding:11px 14px;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(20,20,30,0.12);background:#fff;color:#151821;cursor:pointer;border-radius:8px;touch-action:manipulation;">
                 <dsp-ic name="refresh" [size]="16"></dsp-ic> {{ facing === 'user' ? T['cam_rear'] : T['cam_front'] }}
               </button>
             }
