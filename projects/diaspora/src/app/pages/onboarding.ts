@@ -9,6 +9,7 @@ import { OcrPrefillService } from '../core/ocr-prefill.service';
 import { ApplicationCreate, Nationality, Agency, LookupOption, PackageOffer, Subsector } from '../core/application.model';
 import { PARTICULIER_ONBOARDING_STEPS } from '../core/onboarding-flow';
 import { COUNTRY_FALLBACK_LIST } from '../core/countries-fallback';
+import { checkMajority } from '../core/majority-rules';
 import { DiasporaPreregistrationStep } from './steps/preregistration-step';
 import { DiasporaOtpStep } from './steps/otp-step';
 import { DiasporaDocumentsStep, DocumentsStepState, EMPTY_DOCUMENTS_STATE } from './steps/documents-step';
@@ -185,7 +186,7 @@ const REVIEW_HIDDEN_KEYS = new Set([
                       @for (f of step().fields; track f) {
                         @if (isVisible(f)) {
                           <div [style.grid-column]="isWide(f) ? '1 / -1' : 'auto'">
-                            <onb-form-field [label]="label(f)" [required]="isRequired(f)">
+                            <onb-form-field [label]="label(f)" [required]="isRequired(f)" [error]="fieldError(f)">
                               @if (isReadOnly(f)) {
                                 <div style="padding:10px 12px;border:1px solid rgba(20,20,30,0.08);border-radius:8px;background:#F7F2EC;font-size:13.5px;color:#151821;">
                                   {{ displayValue(f) }}
@@ -355,7 +356,27 @@ export class DiasporaOnboardingPage {
   /** Un champ obligatoire mais masqué (ex. régime matrimonial pour un homme célibataire) ne
    *  doit jamais bloquer la progression — seuls les champs visibles sont vérifiés. */
   private stepValid(): boolean {
-    return this.step().fields.every((f) => !REQUIRED_FIELDS.has(f) || !this.isVisible(f) || !!this.value(f));
+    const requiredOk = this.step().fields.every(
+      (f) => !REQUIRED_FIELDS.has(f) || !this.isVisible(f) || !!this.value(f),
+    );
+    // Aucune erreur de validation métier (ex. majorité selon le pays) sur les champs visibles.
+    const noFieldError = this.step().fields.every((f) => !this.isVisible(f) || !this.fieldError(f));
+    return requiredOk && noFieldError;
+  }
+
+  /** Erreur de validation métier affichée sous le champ (null si rien à signaler).
+   *  Majorité : 21 ans au Cameroun, 18 ans par défaut — selon la NATIONALITÉ du demandeur
+   *  (statut personnel), à défaut son pays de résidence. Cf. core/majority-rules.ts. */
+  fieldError(f: string): string | undefined {
+    if (f !== 'birth_date') return undefined;
+    const country = this.value('nationality') || this.value('residence');
+    const check = checkMajority(this.value('birth_date'), country);
+    if (check.ok) return undefined;
+    if (check.age === null) return 'Date de naissance invalide.';
+    const where = this.nationalities().find((n) => n.code === (country ?? '').toUpperCase())?.name
+      ?? this.countries().find((c) => c.code === (country ?? '').toUpperCase())?.name
+      ?? country;
+    return `La majorité légale est requise : ${check.required} ans (${where}) — âge actuel : ${check.age} ans.`;
   }
   displayValue(f: string): string {
     if (f === 'identity_document_type') return IDENTITY_TYPE_LABELS[this.value(f)] ?? this.value(f);
