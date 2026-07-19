@@ -135,6 +135,14 @@ export class DiasporaDocumentsStep implements OnInit {
     this.identityType.set(this.state.identityType);
     this.identitySides.set(this.state.identitySides);
     this.previews.set(this.state.previews);
+    // Le défaut 'CNI' n'existe pas pour un non-résident hors CEMAC (passeport/séjour/consulaire) :
+    // le <select> s'affichait VIDE et le flux traitait la pièce comme une carte recto/verso.
+    // On recale sur la première option réellement proposée.
+    const opts = this.identityOptions();
+    if (opts.length && !opts.some((o) => o.value === this.identityType())) {
+      this.identityType.set(opts[0].value);
+      this.emitState();
+    }
   }
 
   private emitState(): void {

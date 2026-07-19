@@ -51,6 +51,7 @@ export const EMPTY_BIOMETRICS_STATE: BiometricsStepState = {
       <onb-section-card title="Selfie" subtitle="Placez votre visage dans le cadre, la capture se déclenche automatiquement.">
         <diaspora-photo-capture
           [round]="true" [boxW]="220" [boxH]="220" detect="face" [allowGallery]="false"
+          guide="Placez votre visage au centre du cadre — la photo se prend automatiquement."
           [imageData]="selfiePreview()" (captured)="onSelfie($event)" (retake)="onSelfieRetake()" />
         @if (selfieStatus() === 'done') { <p style="font-size:12px;color:#16A34A;margin-top:10px;">Selfie reçu.</p> }
         @if (selfieStatus() === 'error') { <p style="font-size:12px;color:#C8102E;margin-top:10px;">Échec de l'envoi — vous pouvez continuer.</p> }

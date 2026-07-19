@@ -22,7 +22,11 @@ const RESEND_COOLDOWN_S = 60;
           </p>
         } @else {
           <onb-form-field label="Code reçu" required>
-            <input onbInput type="text" inputmode="numeric" maxlength="6" placeholder="123456"
+            <!-- one-time-code : iOS/Android proposent le code reçu par SMS/notification en un tap.
+                 Styles en bindings (la directive onbInput réécrit l'attribut style dans ngOnInit). -->
+            <input onbInput type="text" inputmode="numeric" maxlength="6" placeholder="••••••"
+                   autocomplete="one-time-code"
+                   [style.letterSpacing.px]="8" [style.fontSize.px]="18" [style.fontWeight]="700" [style.textAlign]="'center'"
                    [value]="code()" (input)="code.set($any($event.target).value)" />
           </onb-form-field>
         }

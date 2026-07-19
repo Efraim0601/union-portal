@@ -61,7 +61,7 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
         <!-- ═══════════ Hero ═══════════ -->
         <section class="hero">
           <div class="hero-main">
-            <span class="eyebrow">§ Services bancaires en ligne</span>
+            <span class="eyebrow">Services bancaires en ligne</span>
             <h1 class="hero-h1">Comment pouvons-nous <span>vous accompagner&nbsp;?</span></h1>
             <p class="hero-p">
               Sélectionnez le service bancaire souhaité&nbsp;: ouvrez un compte à distance,
@@ -89,8 +89,11 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
             <article class="svc-card">
               <div>
                 <div class="svc-top">
-                  <span class="svc-icon">🏦</span>
-                  <span class="svc-num">§ 01</span>
+                  <!-- Icônes SVG (jamais d'emoji : rendu inégal selon OS, pas de contrôle couleur). -->
+                  <span class="svc-icon" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+                  </span>
+                  <span class="svc-num">01</span>
                 </div>
                 <span class="badge ready">Disponible</span>
                 <h4>Démarrer une ouverture de compte à distance</h4>
@@ -106,8 +109,10 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
             <article class="svc-card">
               <div>
                 <div class="svc-top">
-                  <span class="svc-icon">💳</span>
-                  <span class="svc-num">§ 02</span>
+                  <span class="svc-icon" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg>
+                  </span>
+                  <span class="svc-num">02</span>
                 </div>
                 <span class="badge ready">Disponible</span>
                 <h4>Souscrire à un produit</h4>
@@ -123,8 +128,10 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
             <article class="svc-card">
               <div>
                 <div class="svc-top">
-                  <span class="svc-icon">🔁</span>
-                  <span class="svc-num">§ 03</span>
+                  <span class="svc-icon" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                  </span>
+                  <span class="svc-num">03</span>
                 </div>
                 <span class="badge ready">Disponible</span>
                 <h4>Recharger ma carte</h4>
@@ -141,7 +148,7 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
 
       <footer class="footer">
         <span>© Afriland First Bank — Portail digital client</span>
-        <a routerLink="/promote/login" class="footer-link">Accès personnel Afriland</a>
+        <a routerLink="/promote/partners" class="footer-link">Espace partenaires</a>
       </footer>
     </div>
   `,
@@ -245,7 +252,7 @@ import { AFB_LOGO_DATA_URI } from '../shared/afb-logo';
     .svc-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
     .svc-icon {
       width:52px; height:52px; border-radius:16px; background:#FFF3E6;
-      display:flex; align-items:center; justify-content:center; font-size:26px;
+      display:flex; align-items:center; justify-content:center; color:#C8102E;
     }
     .svc-num { font-size:9.5px; font-weight:700; letter-spacing:1.6px; color:#C8102E; text-transform:uppercase; }
     .badge {

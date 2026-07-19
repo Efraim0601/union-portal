@@ -116,9 +116,11 @@ const T: Record<string, string> = {
           @if (shooting()) { <span style="position:absolute;inset:0;background:#fff;opacity:.85;"></span> }
         </div>
         @if (liveActive() && detectMsg()) {
-          <p [style.color]="detectState() === 'ready' ? '#16A34A' : '#C8102E'"
+          <!-- Tonalité : vert = prêt, gris neutre = recherche (pas une erreur !), rouge = vrai problème.
+               Avant, « Recherche en cours… » s'affichait en rouge avec un triangle d'alerte. -->
+          <p [style.color]="detectTone() === 'ok' ? '#16A34A' : detectTone() === 'info' ? '#6B7280' : '#C8102E'"
              style="display:flex;gap:7px;align-items:center;font-size:12.5px;font-weight:700;text-align:center;line-height:1.4;max-width:280px;margin:0;">
-            <dsp-ic [name]="detectState() === 'ready' ? 'check' : 'alert'" [size]="16" [sw]="2.5" style="flex:0 0 auto"></dsp-ic>
+            <dsp-ic [name]="detectTone() === 'ok' ? 'check' : detectTone() === 'info' ? 'camera' : 'alert'" [size]="16" [sw]="2.5" style="flex:0 0 auto"></dsp-ic>
             <span>{{ detectMsg() }}</span>
           </p>
         }
@@ -145,7 +147,10 @@ const T: Record<string, string> = {
               </button>
             }
           } @else {
-            <button type="button" (click)="shoot()" [disabled]="shooting() || !canShoot()" style="width:auto;min-height:44px;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;">
+            <button type="button" (click)="shoot()" [disabled]="shooting() || !canShoot()"
+              [style.opacity]="shooting() || !canShoot() ? 0.45 : 1"
+              [style.cursor]="shooting() || !canShoot() ? 'not-allowed' : 'pointer'"
+              style="width:auto;min-height:44px;padding:11px 18px;display:inline-flex;align-items:center;gap:8px;background:#C8102E;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;touch-action:manipulation;transition:opacity .2s ease;">
               <dsp-ic name="camera" [size]="18"></dsp-ic> {{ T['cam_take'] }}
             </button>
             @if (allowGallery) {
@@ -243,6 +248,14 @@ export class DiasporaPhotoCapture implements AfterViewInit, OnDestroy {
     if (s === 'idle') return '';
     if (s === 'ready') return T[this.autoCapture ? 'cap_hold_still' : 'cap_ready'];
     return T['cap_' + s];
+  }
+
+  /** Tonalité du message de détection : 'ok' (prêt), 'info' (recherche/neutre), 'warn' (action requise). */
+  detectTone(): 'ok' | 'info' | 'warn' {
+    const s = this.detectState();
+    if (s === 'ready') return 'ok';
+    if (s === 'searching') return 'info';
+    return 'warn';
   }
 
   ngAfterViewInit() { /* la caméra démarre sur action utilisateur */ }

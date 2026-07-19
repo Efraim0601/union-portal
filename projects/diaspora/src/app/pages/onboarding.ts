@@ -99,7 +99,7 @@ const REVIEW_HIDDEN_KEYS = new Set([
   // sa seule instance est partagée avec l'étape Documents ; repartie à zéro à chaque parcours.
   providers: [OcrPrefillService],
   template: `
-    <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;">
+    <div style="min-height:100vh;background:#F7F2EC;font-family:'Inter',system-ui,sans-serif;overflow-x:clip;">
       <div class="onb-page" style="max-width:1040px;margin:0 auto;padding:32px 20px 60px;">
         <!-- En-tête -->
         <div style="margin-bottom:28px;">
@@ -154,7 +154,7 @@ const REVIEW_HIDDEN_KEYS = new Set([
                       @for (e of filled(); track e[0]) {
                         <div style="min-width:0;">
                           <dt style="font-size:10px;font-weight:600;letter-spacing:0.4px;color:#9CA3AF;text-transform:uppercase;">{{ label(e[0]) }}</dt>
-                          <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;overflow-wrap:anywhere;">{{ e[1] }}</dd>
+                          <dd style="font-size:13.5px;color:#151821;margin:2px 0 0;overflow-wrap:anywhere;">{{ reviewValue(e[0], e[1]) }}</dd>
                         </div>
                       }
                     </dl>
@@ -361,6 +361,23 @@ export class DiasporaOnboardingPage {
     if (f === 'identity_document_type') return IDENTITY_TYPE_LABELS[this.value(f)] ?? this.value(f);
     if (f === 'residence') return this.countries().find((c) => c.code === this.value(f))?.name ?? this.value(f);
     return this.value(f);
+  }
+  /** Valeur AFFICHABLE d'un champ du récapitulatif : libellé humain plutôt que code brut
+   *  (« Célibataire » et non « SINGLE », « Cameroun » et non « CM », dates en JJ/MM/AAAA).
+   *  S'appuie sur les mêmes référentiels que les listes déroulantes du formulaire. */
+  reviewValue(f: string, v: unknown): string {
+    const raw = String(v ?? '').trim();
+    if (!raw) return raw;
+    if (raw === 'true') return 'Oui';
+    if (raw === 'false') return 'Non';
+    if (f === 'identity_document_type') return IDENTITY_TYPE_LABELS[raw] ?? raw;
+    if (f === 'residence') return this.countries().find((c) => c.code === raw)?.name ?? raw;
+    if (f === 'residency_status') return raw === 'RESIDENT' ? 'Résident (Cameroun)' : 'Non-résident';
+    const opts = this.options(f);
+    if (opts) return opts.find((o) => o.value === raw)?.label ?? raw;
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    return raw;
   }
   /** Les champs "précisez" (autre) ne s'affichent que si l'option "Autre" a été choisie juste avant. */
   isVisible(f: string): boolean {
