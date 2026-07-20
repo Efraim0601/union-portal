@@ -508,8 +508,17 @@ export class DiasporaOnboardingPage {
     this.error.set(null);
     this.next();
   }
-  next(): void { if (this.current() < this.steps.length) this.current.update((v) => v + 1); }
-  prev(): void { this.error.set(null); if (this.current() > 1) this.current.update((v) => v - 1); }
+  next(): void { if (this.current() < this.steps.length) { this.current.update((v) => v + 1); this.scrollToTop(); } }
+  prev(): void { this.error.set(null); if (this.current() > 1) { this.current.update((v) => v - 1); this.scrollToTop(); } }
+
+  /** Chaque étape est plus longue qu'un écran : sans ceci, la nouvelle étape s'affiche à la
+   *  position de scroll du bouton « Continuer » (donc en bas). On remonte en haut du parcours.
+   *  requestAnimationFrame : après le rendu de la nouvelle étape (@switch), pas avant. */
+  private scrollToTop(): void {
+    requestAnimationFrame(() => {
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { window.scrollTo(0, 0); }
+    });
+  }
 
   submit(): void {
     if (!this.model().consent_accepted) {

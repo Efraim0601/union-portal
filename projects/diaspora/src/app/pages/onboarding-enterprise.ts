@@ -150,8 +150,16 @@ export class DiasporaOnboardingEnterprisePage {
     if (this.step().key === 'review') this.submit();
     else this.next();
   }
-  next(): void { if (this.current() < this.steps.length) this.current.update((v) => v + 1); }
-  prev(): void { if (this.current() > 1) this.current.update((v) => v - 1); }
+  next(): void { if (this.current() < this.steps.length) { this.current.update((v) => v + 1); this.scrollToTop(); } }
+  prev(): void { if (this.current() > 1) { this.current.update((v) => v - 1); this.scrollToTop(); } }
+
+  /** Remonte en haut du parcours au changement d'étape (sinon la nouvelle étape s'affiche
+   *  à la position du bouton « Continuer », donc en bas). */
+  private scrollToTop(): void {
+    requestAnimationFrame(() => {
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { window.scrollTo(0, 0); }
+    });
+  }
 
   submit(): void {
     this.submitting.set(true);
